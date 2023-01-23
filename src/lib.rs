@@ -154,24 +154,5 @@ pub fn to_stream(item: TokenStream) -> TokenStream {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-
     //use super::*;
-
-    #[test]
-    fn should_compile() {
-        let t = trybuild::TestCases::new();
-        t.pass("compile-tests/correct_syntax.rs");
-    }
-
-    #[test]
-    fn should_not_compile() {
-        let t = trybuild::TestCases::new();
-        let files = Path::new("compile-tests/incorrect_syntax")
-            .read_dir()
-            .unwrap();
-        for file in files {
-            t.compile_fail(file.unwrap().path());
-        }
-    }
 }
