@@ -15,4 +15,19 @@ pub fn main() {
     to_stream!(INPUT(a), REPLICATE = 1, {});
     to_stream!(OUTPUT(a), REPLICATE = 1, {});
     to_stream!(INPUT(a), OUTPUT(b), REPLICATE = 1, {});
+    to_stream!(INPUT(a), {
+        let c = 3;
+        STAGE({
+            println!("Stages");
+        });
+        STAGE(INPUT(a), {});
+        STAGE(INPUT(a, c), {});
+        STAGE(OUTPUT(c), {});
+        STAGE(OUTPUT(a, c), {});
+        STAGE(INPUT(a, c), OUTPUT(a, c), {});
+        STAGE(REPLICATE = 1, {});
+        STAGE(INPUT(a), REPLICATE = 1, {});
+        STAGE(OUTPUT(a), REPLICATE = 1, {});
+        STAGE(INPUT(a), OUTPUT(c), REPLICATE = 1, {});
+    });
 }

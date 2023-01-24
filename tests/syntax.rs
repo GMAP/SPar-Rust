@@ -20,7 +20,7 @@ fn try_compile(source: &Path) -> bool {
         .arg("tmp")
         .arg("--extern")
         .arg("spar_rust=".to_string() + spar_dep.to_str().unwrap())
-        // NOTE: change these to see the diagnostic messages when compilation fails
+        // NOTE: comment these out to see the diagnostic messages when compilation fails
         .stderr(Stdio::null())
         .stdout(Stdio::null())
         .status()
