@@ -15,9 +15,10 @@ fn try_compile(source: &Path) -> bool {
     }
 
     match std::process::Command::new("rustc")
+        .arg("+nightly")
+        .arg("-Zunpretty=expanded") // This is necessary so that rust tries to expand the macros
+        .arg("-Zparse-only") // This means we won't generate a binary
         .arg(source.to_string_lossy().to_string())
-        .arg("--out-dir")
-        .arg("tmp")
         .arg("--extern")
         .arg("spar_rust=".to_string() + spar_dep.to_str().unwrap())
         // NOTE: comment these out to see the diagnostic messages when compilation fails
@@ -45,6 +46,10 @@ fn should_not_compile() {
         .unwrap();
     for file in files {
         let file = file.unwrap();
-        assert!(!try_compile(&file.path()));
+        assert!(
+            !try_compile(&file.path()),
+            "{} compiled, when it shouldn't!",
+            file.path().to_string_lossy()
+        );
     }
 }
