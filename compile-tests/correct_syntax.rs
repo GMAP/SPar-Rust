@@ -20,7 +20,9 @@ pub fn main() {
         STAGE({
             println!("Stages");
         });
-        STAGE(INPUT(a), {});
+        STAGE(INPUT(a), {
+            println!("MAKE SURE THE MACRO DOES NOT ERASE THIS");
+        });
         STAGE(INPUT(a, c), {});
         STAGE(OUTPUT(c), {});
         STAGE(OUTPUT(a, c), {});

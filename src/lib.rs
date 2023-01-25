@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
 
-use proc_macro::TokenStream;
+use proc_macro2::{TokenStream, TokenTree};
 use quote::{quote, ToTokens};
 use syn::{
     braced, parenthesized,
@@ -8,7 +8,7 @@ use syn::{
     parse_macro_input,
     punctuated::Punctuated,
     token::Brace,
-    Block, Ident, Result, Stmt, Token,
+    Block, Ident, Result, Token,
 };
 
 mod kw {
@@ -36,12 +36,12 @@ impl SparAttrs {
 
 struct SparStage {
     attrs: SparAttrs,
-    //code: TokenStream,
+    code: TokenStream,
 }
 
 impl SparStage {
-    pub fn new(attrs: SparAttrs) -> Self {
-        Self { attrs }
+    pub fn new(attrs: SparAttrs, code: TokenStream) -> Self {
+        Self { attrs, code }
     }
 }
 
@@ -66,17 +66,7 @@ impl Parse for SparStream {
         let block;
         braced!(block in input);
         while !block.is_empty() {
-            if !block.peek(kw::STAGE) {
-                if block.peek(Brace) {
-                   let b = block.parse::<Block>()?.into_token_stream();
-                   code.extend::<TokenStream>(b.into());
-                } else {
-                    let s = block.parse::<Stmt>()?.into_token_stream();
-                    code.extend::<TokenStream>(s.into());
-                }
-                continue;
-            }
-            block.parse::<kw::STAGE>()?;
+            skip_until_stage(&block, &mut code)?;
 
             let stage_args;
             parenthesized!(stage_args in block);
@@ -87,10 +77,9 @@ impl Parse for SparStream {
                 stage_output.into_iter().collect(),
                 stage_replicate,
             );
+            let b = stage_args.parse::<Block>()?; // This is necessary to empty the parser
 
-            let _b = stage_args.parse::<Block>()?; // This is necessary to empty the parser
-
-            stages.push(SparStage::new(stage_attrs));
+            stages.push(SparStage::new(stage_attrs, b.into_token_stream()));
             block.parse::<Token![;]>()?;
         }
 
@@ -98,8 +87,32 @@ impl Parse for SparStream {
             return Err(input.error("unexpected trailing tokens"));
         }
 
-        Ok(Self { attrs, code, stages })
+        Ok(Self {
+            attrs,
+            code,
+            stages,
+        })
     }
+}
+
+/// Skips the ParseStream up until the next STAGE token, putting everything it skiped inside @tokens
+fn skip_until_stage(stream: ParseStream, tokens: &mut TokenStream) -> Result<()> {
+    stream.step(|cursor| {
+        let mut rest = *cursor;
+        while let Some((token_tree, next)) = rest.token_tree() {
+            match &token_tree {
+                TokenTree::Ident(ident) if ident.to_string() == "STAGE" => {
+                    return Ok(((), next));
+                }
+                _ => {
+                    token_tree.to_tokens(tokens);
+                    rest = next;
+                }
+            }
+        }
+        Ok(((), rest))
+    })?;
+    Ok(())
 }
 
 /// IMPORTANT: this assumes the parenthesis '()' have already been parsed by calling the
@@ -167,13 +180,12 @@ fn parse_spar_args(
     Err(args.error("missing block of code"))
 }
 
-#[proc_macro]
-pub fn to_stream(item: TokenStream) -> TokenStream {
+fn codegen(spar_stream: SparStream) -> TokenStream {
     let SparStream {
         attrs,
         code,
         stages,
-    } = parse_macro_input!(item as SparStream);
+    } = spar_stream;
 
     let input = &attrs.input;
     let output = &attrs.output;
@@ -189,7 +201,8 @@ pub fn to_stream(item: TokenStream) -> TokenStream {
         println!("\tOutput:");
         #(println!("\t\t{}", #output));*;
         println!("\tReplicate: {}", #replicate);
-    }.into();
+    }
+    .into();
 
     codegen.extend(code);
     for (i, stage) in stages.iter().enumerate() {
@@ -201,17 +214,27 @@ pub fn to_stream(item: TokenStream) -> TokenStream {
             .unwrap_or(NonZeroU32::new(1).unwrap())
             .into();
 
-        codegen.extend::<TokenStream>(quote! {
-            println!("\tStage[{}]:", #i);
-            println!("\t\tInput:");
-            #(println!("\t\t\t{}", #input));*;
-            println!("\t\tOutput:");
-            #(println!("\t\t\t{}", #output));*;
-            println!("\t\tReplicate: {}", #replicate);
-        }.into());
+        codegen.extend(stage.code.clone().into_iter());
+        codegen.extend::<TokenStream>(
+            quote! {
+                println!("\tStage[{}]:", #i);
+                println!("\t\tInput:");
+                #(println!("\t\t\t{}", #input));*;
+                println!("\t\tOutput:");
+                #(println!("\t\t\t{}", #output));*;
+                println!("\t\tReplicate: {}", #replicate);
+            }
+            .into(),
+        );
     }
 
-    TokenStream::from(codegen)
+    codegen
+}
+
+#[proc_macro]
+pub fn to_stream(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let spar_stream: SparStream = parse_macro_input!(item as SparStream);
+    codegen(spar_stream).into()
 }
 
 #[cfg(test)]
