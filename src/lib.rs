@@ -53,8 +53,6 @@ struct SparStream {
 
 impl Parse for SparStream {
     fn parse(input: ParseStream) -> Result<Self> {
-        let mut stages = Vec::new();
-        let mut code = TokenStream::new();
         let (spar_input, spar_output, replicate) = parse_spar_args(&input)?;
 
         let attrs = SparAttrs::new(
@@ -65,6 +63,9 @@ impl Parse for SparStream {
 
         let block;
         braced!(block in input);
+
+        let mut stages = Vec::new();
+        let mut code = TokenStream::new();
         while !block.is_empty() {
             skip_until_stage(&block, &mut code)?;
 
@@ -180,6 +181,19 @@ fn parse_spar_args(
     Err(args.error("missing block of code"))
 }
 
+fn gen_replicate(replicate: &Option<NonZeroU32>) -> TokenStream {
+    match replicate {
+        Some(n) => {
+            let n: u32 = (*n).into();
+            quote!(#n)
+        }
+        None => quote!(std::env::var("SPAR_NUM_WORKERS")
+            .unwrap_or("1".to_string())
+            .parse()
+            .unwrap_or(1)),
+    }
+}
+
 fn codegen(spar_stream: SparStream) -> TokenStream {
     let SparStream {
         attrs,
@@ -189,10 +203,7 @@ fn codegen(spar_stream: SparStream) -> TokenStream {
 
     let input = &attrs.input;
     let output = &attrs.output;
-    let replicate: u32 = attrs
-        .replicate
-        .unwrap_or(NonZeroU32::new(1).unwrap())
-        .into();
+    let replicate = gen_replicate(&attrs.replicate);
 
     let mut codegen: TokenStream = quote! {
         println!("SparStream:");
@@ -208,11 +219,7 @@ fn codegen(spar_stream: SparStream) -> TokenStream {
     for (i, stage) in stages.iter().enumerate() {
         let input = &stage.attrs.input;
         let output = &stage.attrs.output;
-        let replicate: u32 = stage
-            .attrs
-            .replicate
-            .unwrap_or(NonZeroU32::new(1).unwrap())
-            .into();
+        let replicate = gen_replicate(&stage.attrs.replicate);
 
         codegen.extend(stage.code.clone().into_iter());
         codegen.extend::<TokenStream>(
