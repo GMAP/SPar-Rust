@@ -1,0 +1,11 @@
+Add type information to Ident (user must write them)
+	Ex: INPUT(a: u32, b: String)
+
+Change SparStream code and stage representation
+	There can be code after the STAGE:
+		to_stream!({
+			while(something) {
+				let a = 1;
+				STAGE(INPUT(a) ({ ...}))
+			} // <= THIS NEEDS TO BE PARSED!!
+		})
