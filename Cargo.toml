@@ -11,4 +11,4 @@ proc-macro2 = "1.0"
 syn = { version = "1.0", features = [ "full" ] }
 quote = "1.0"
 
-rust-spp = { git = "https://github.com/GMAP/rust-ssp" }
+rust-spp = { git = "https://github.com/GMAP/rust-ssp", rev = "refs/pull/2/head" }
