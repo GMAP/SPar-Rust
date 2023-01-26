@@ -169,6 +169,7 @@ fn parse_spar_args(cursor: Cursor) -> Result<(SparAttrs, TokenStream, Cursor)> {
     let mut input: Vec<Ident> = Vec::new();
     let mut output: Vec<Ident> = Vec::new();
     let mut replicate: Option<NonZeroU32> = None;
+    let mut has_code = false;
     let mut code = TokenStream::new();
 
     let mut rest = args;
@@ -176,16 +177,34 @@ fn parse_spar_args(cursor: Cursor) -> Result<(SparAttrs, TokenStream, Cursor)> {
         match &token_tree {
             TokenTree::Ident(ident) => match ident.to_string().as_str() {
                 "INPUT" => {
+                    if !input.is_empty() {
+                        return Err(syn::Error::new(
+                            rest.span(),
+                            "multiple INPUTs aren't allowed",
+                        ));
+                    }
                     let (i, next) = get_identifiers(next)?;
                     input = i;
                     rest = next;
                 }
                 "OUTPUT" => {
+                    if !output.is_empty() {
+                        return Err(syn::Error::new(
+                            rest.span(),
+                            "multiple OUTPUTs aren't allowed",
+                        ));
+                    }
                     let (o, next) = get_identifiers(next)?;
                     output = o;
                     rest = next;
                 }
                 "REPLICATE" => {
+                    if replicate.is_some() {
+                        return Err(syn::Error::new(
+                            rest.span(),
+                            "multiple REPLICATEs aren't allowed",
+                        ));
+                    }
                     let (r, next) = parse_replicate(next)?;
                     replicate = Some(r);
                     rest = next;
@@ -203,12 +222,13 @@ fn parse_spar_args(cursor: Cursor) -> Result<(SparAttrs, TokenStream, Cursor)> {
 
             TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => {
                 let (group, _, next) = rest.group(group.delimiter()).unwrap();
-                if !code.is_empty() {
+                if has_code {
                     return Err(syn::Error::new(
                         rest.span(),
                         "SPAR arguments cannot contain multiple code blocks",
                     ));
                 }
+                has_code = true;
                 code.extend(group.token_stream());
                 rest = next;
             }
@@ -218,6 +238,13 @@ fn parse_spar_args(cursor: Cursor) -> Result<(SparAttrs, TokenStream, Cursor)> {
                 return Err(syn::Error::new(rest.span(), msg));
             }
         }
+    }
+
+    if !has_code {
+        return Err(syn::Error::new(
+            rest.span(),
+            "there must be block of code `{...}` in SPAR's arguments",
+        ));
     }
 
     Ok((SparAttrs::new(input, output, replicate), code, after))
