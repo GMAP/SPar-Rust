@@ -1,6 +1,3 @@
-Add type information to Ident (user must write them)
-	Ex: INPUT(a: u32, b: String)
-
 Change SparStream code and stage representation
 	There can be code after the STAGE:
 		to_stream!({
@@ -9,3 +6,7 @@ Change SparStream code and stage representation
 				STAGE(INPUT(a) ({ ...}))
 			} // <= THIS NEEDS TO BE PARSED!!
 		})
+
+MAYBE:
+Add type information to Ident (user must write them)
+	Ex: INPUT(a: u32, b: String)

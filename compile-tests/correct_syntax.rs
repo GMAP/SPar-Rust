@@ -32,4 +32,11 @@ pub fn main() {
         STAGE(OUTPUT(a), REPLICATE = 1, {});
         STAGE(INPUT(a), OUTPUT(c), REPLICATE = 1, {});
     });
+    //to_stream!({
+    //    for i in 0..3 {
+    //        STAGE(INPUT(i), {
+    //            println!("hi");
+    //        })
+    //    }
+    //});
 }
