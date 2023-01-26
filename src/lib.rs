@@ -8,6 +8,7 @@ use spar_stream::SparStream;
 
 #[proc_macro]
 pub fn to_stream(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    dbg!(&item);
     let spar_stream: SparStream = parse_macro_input!(item as SparStream);
     codegen(spar_stream).into()
 }

@@ -5,13 +5,9 @@ use std::num::NonZeroU32;
 use proc_macro2::{Delimiter, TokenStream, TokenTree};
 use quote::ToTokens;
 use syn::{
-    braced,
-    buffer::Cursor,
-    parenthesized,
-    parse::{Parse, ParseStream, StepCursor},
-    punctuated::Punctuated,
-    token::Brace,
-    Ident, Result, Token,
+    buffer::{Cursor, TokenBuffer},
+    parse::{Parse, ParseStream},
+    Ident, Result,
 };
 
 mod kw {
@@ -56,19 +52,10 @@ pub struct SparStream {
 
 impl Parse for SparStream {
     fn parse(input: ParseStream) -> Result<Self> {
-        let (spar_input, spar_output, replicate) = parse_spar_args(&input)?;
-
-        let attrs = SparAttrs::new(
-            spar_input.into_iter().collect(),
-            spar_output.into_iter().collect(),
-            replicate,
-        );
-
-        let block;
-        braced!(block in input);
-
+        let (attrs, block, _) = parse_spar_args(input.cursor())?;
         let mut code = TokenStream::new();
-        let stages = skip_until_stage(&block, &mut code)?;
+        let mut stages = Vec::new();
+        parse_spar_stages(TokenBuffer::new2(block).begin(), &mut code, &mut stages)?;
 
         if !input.is_empty() {
             return Err(input.error("unexpected trailing tokens"));
@@ -157,7 +144,7 @@ fn parse_replicate(cursor: Cursor) -> Result<(NonZeroU32, Cursor)> {
     ))
 }
 
-fn parse_spar_stage(cursor: Cursor) -> Result<(SparStage, Cursor)> {
+fn parse_spar_args(cursor: Cursor) -> Result<(SparAttrs, TokenStream, Cursor)> {
     let args;
     let after;
     match cursor.group(Delimiter::Parenthesis) {
@@ -231,26 +218,24 @@ fn parse_spar_stage(cursor: Cursor) -> Result<(SparStage, Cursor)> {
         }
     }
 
-    let attrs = SparAttrs::new(input, output, replicate);
-
-    Ok((SparStage::new(attrs, code), after))
+    Ok((SparAttrs::new(input, output, replicate), code, after))
 }
 
-fn cursor_advance_until_stage<'a, 'b>(
-    cursor: StepCursor<'a, 'b>,
+fn parse_spar_stages<'a>(
+    cursor: Cursor<'a>,
     tokens: &mut TokenStream,
     stages: &mut Vec<SparStage>,
 ) -> Result<((), Cursor<'a>)> {
-    let mut rest = *cursor;
-    let mut after_groups = vec![*cursor];
+    let mut rest = cursor;
+    let mut after_groups = vec![cursor];
 
     while !after_groups.is_empty() {
         rest = after_groups.pop().unwrap();
         while let Some((token_tree, next)) = rest.token_tree() {
             match &token_tree {
                 TokenTree::Ident(ident) if ident.to_string() == "STAGE" => {
-                    let (stage, next) = parse_spar_stage(next)?;
-                    stages.push(stage);
+                    let (attrs, code, next) = parse_spar_args(next)?;
+                    stages.push(SparStage::new(attrs, code));
                     rest = next;
                 }
 
@@ -269,76 +254,4 @@ fn cursor_advance_until_stage<'a, 'b>(
     }
 
     Ok(((), rest))
-}
-
-/// Skips the ParseStream up until the next STAGE token, putting everything it skiped inside @tokens
-fn skip_until_stage(stream: ParseStream, tokens: &mut TokenStream) -> Result<Vec<SparStage>> {
-    let mut stages = Vec::new();
-    stream.step(|cursor| Ok(cursor_advance_until_stage(cursor, tokens, &mut stages)?))?;
-    Ok(stages)
-}
-
-/// IMPORTANT: this assumes the parenthesis '()' have already been parsed by calling the
-/// `parenthesized!` macro
-/// Furthermore, after returning, 'args' should be at the code inside
-fn parse_spar_args(
-    args: ParseStream,
-) -> Result<(
-    Punctuated<Ident, Token![,]>,
-    Punctuated<Ident, Token![,]>,
-    Option<NonZeroU32>,
-)> {
-    let mut input = Punctuated::new();
-    let mut output = Punctuated::new();
-    let mut replicate = None;
-
-    while !args.is_empty() {
-        if args.peek(kw::INPUT) {
-            args.parse::<kw::INPUT>()?;
-            if !input.is_empty() {
-                return Err(
-                    args.error("cannot have multiple 'INPUT' declarations in the same STAGE")
-                );
-            }
-            let input_args;
-            parenthesized!(input_args in args);
-            input = input_args.parse_terminated(Ident::parse)?;
-        } else if args.peek(kw::OUTPUT) {
-            args.parse::<kw::OUTPUT>()?;
-            if !output.is_empty() {
-                return Err(
-                    args.error("cannot have multiple 'OUTPUT' declarations in the same STAGE")
-                );
-            }
-            let output_args;
-            parenthesized!(output_args in args);
-            output = output_args.parse_terminated(Ident::parse)?;
-        } else if args.peek(kw::REPLICATE) {
-            args.parse::<kw::REPLICATE>()?;
-            if replicate.is_some() {
-                return Err(
-                    args.error("cannot have multiple 'REPLICATE' declarations in the same STAGE")
-                );
-            }
-            args.parse::<Token![=]>()?;
-
-            let integer = args.parse::<syn::LitInt>()?;
-            let integer = integer.base10_parse::<u32>()?;
-            if integer == 0 {
-                return Err(args.error("'REPLICATE' cannot have an argument of '0'"));
-            } else {
-                replicate = Some(NonZeroU32::new(integer).unwrap());
-            }
-        } else if args.peek(Brace) {
-            return Ok((input, output, replicate));
-        } else {
-            return Err(args.error("unexpected token. Valid tokens are 'INPUT', 'OUTPUT', 'REPLICATE' and a code block"));
-        }
-
-        if args.peek(Token![,]) {
-            args.parse::<Token![,]>()?;
-        }
-    }
-
-    Err(args.error("missing block of code"))
 }
