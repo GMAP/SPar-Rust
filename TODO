@@ -1,3 +1,8 @@
+Problem:
+	we have a problem with the codegen
+	we need to store STAGES source location information in order to generate code correctly
+	right now, STAGES is always being printed at the end, which is leading to annoying problems
+
 Change SparStream code and stage representation
 	There can be code after the STAGE:
 		to_stream!({

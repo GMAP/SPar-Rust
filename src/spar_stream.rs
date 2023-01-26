@@ -256,8 +256,10 @@ fn parse_spar_stages<'a>(
     stages: &mut Vec<SparStage>,
 ) -> Result<((), Cursor<'a>)> {
     let mut rest = cursor;
-    let mut after_groups = vec![cursor];
 
+    let mut groups_code = Vec::new();
+
+    let mut after_groups = vec![cursor];
     while !after_groups.is_empty() {
         rest = after_groups.pop().unwrap();
         while let Some((token_tree, next)) = rest.token_tree() {
@@ -277,17 +279,24 @@ fn parse_spar_stages<'a>(
                     }
                 }
 
-                TokenTree::Group(group) => {
+                TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => {
                     let (group_cursor, _, next) = rest.group(group.delimiter()).unwrap();
+                    groups_code.push(TokenStream::new());
                     after_groups.push(next);
                     rest = group_cursor;
                 }
 
                 _ => {
-                    token_tree.to_tokens(tokens);
+                    token_tree.to_tokens(groups_code.last_mut().unwrap_or(tokens));
                     rest = next;
                 }
             }
+        }
+
+        if let Some(code) = groups_code.pop() {
+            tokens.extend(
+                TokenTree::Group(Group::new(Delimiter::Brace, code)).into_token_stream(),
+            );
         }
     }
 
