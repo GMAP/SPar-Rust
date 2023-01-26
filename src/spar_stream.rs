@@ -263,9 +263,18 @@ fn parse_spar_stages<'a>(
         while let Some((token_tree, next)) = rest.token_tree() {
             match &token_tree {
                 TokenTree::Ident(ident) if ident.to_string() == "STAGE" => {
-                    let (attrs, code, next) = parse_spar_args(next)?;
+                    let (attrs, code, semicolon) = parse_spar_args(next)?;
                     stages.push(SparStage::new(attrs, code));
-                    rest = next;
+
+                    match semicolon.token_tree() {
+                        Some((token, next)) => match token {
+                            TokenTree::Punct(punct) if punct.as_char() == ';' => {
+                                rest = next;
+                            }
+                            _ => return Err(syn::Error::new(next.span(), "expected ';'")),
+                        },
+                        None => return Err(syn::Error::new(next.span(), "expected ';'")),
+                    }
                 }
 
                 TokenTree::Group(group) => {

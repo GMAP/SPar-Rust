@@ -22,6 +22,7 @@ pub fn main() {
         });
         STAGE(INPUT(a), {
             println!("MAKE SURE THE MACRO DOES NOT ERASE THIS");
+            println!("TESTING TWO STATEMENTS");
         });
         STAGE(INPUT(a, c), {});
         STAGE(OUTPUT(c), {});
@@ -32,11 +33,11 @@ pub fn main() {
         STAGE(OUTPUT(a), REPLICATE = 1, {});
         STAGE(INPUT(a), OUTPUT(c), REPLICATE = 1, {});
     });
-    //to_stream!({
-    //    for i in 0..3 {
-    //        STAGE(INPUT(i), {
-    //            println!("hi");
-    //        })
-    //    }
-    //});
+    to_stream!({
+        for i in 0..3 {
+            STAGE(INPUT(i), {
+                println!("hi");
+            });
+        }
+    });
 }
