@@ -2,11 +2,10 @@
 
 use std::num::NonZeroU32;
 
-use proc_macro2::{Delimiter, TokenStream, TokenTree};
+use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
 use quote::ToTokens;
 use syn::{
     buffer::{Cursor, TokenBuffer},
-    parse::{Parse, ParseStream},
     Ident, Result,
 };
 
@@ -50,16 +49,19 @@ pub struct SparStream {
     pub code: TokenStream,
 }
 
-impl Parse for SparStream {
-    fn parse(input: ParseStream) -> Result<Self> {
-        let (attrs, block, _) = parse_spar_args(input.cursor())?;
+impl TryFrom<proc_macro::TokenStream> for SparStream {
+    type Error = syn::Error;
+
+    fn try_from(value: proc_macro::TokenStream) -> std::result::Result<Self, Self::Error> {
+        let input = TokenBuffer::new(
+            TokenTree::Group(Group::new(Delimiter::Parenthesis, value.into()))
+                .into_token_stream()
+                .into(),
+        );
+        let (attrs, block, _) = parse_spar_args(input.begin())?;
         let mut code = TokenStream::new();
         let mut stages = Vec::new();
         parse_spar_stages(TokenBuffer::new2(block).begin(), &mut code, &mut stages)?;
-
-        if !input.is_empty() {
-            return Err(input.error("unexpected trailing tokens"));
-        }
 
         Ok(Self {
             attrs,
