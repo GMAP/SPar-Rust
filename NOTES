@@ -1,0 +1,5 @@
+* SPAR_NUM_WORKERS vs Replicate priority
+
+Proc macros are run during the AST creation phase, prior to type analyzes.
+This means we don't have acess to type information when are generating proc
+macros' output. This makes it very difficult to work with rust-ssp, for example.

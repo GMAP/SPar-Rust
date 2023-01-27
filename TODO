@@ -1,7 +1,8 @@
+Organize repository with workspaces, and proper testing
+
 Code generation
 	basic stream analysis (based on Dalvan's thesis)
 	generate the actual code
-
 
 MAYBE:
 Add type information to Ident (user must write them)
