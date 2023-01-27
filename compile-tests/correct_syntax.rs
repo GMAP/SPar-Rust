@@ -35,9 +35,8 @@ pub fn main() {
     });
     to_stream!({
         for i in 0..3 {
-            let i = i;
             STAGE(INPUT(i), {
-                println!("hi");
+                println!("hi: {i}");
             });
         }
     });

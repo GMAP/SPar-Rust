@@ -1,8 +1,9 @@
 use std::num::NonZeroU32;
 
 use crate::spar_stream::SparStream;
-use proc_macro2::TokenStream;
-use quote::quote;
+use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
+use quote::{quote, ToTokens};
+use syn::buffer::TokenBuffer;
 
 fn gen_replicate(replicate: &Option<NonZeroU32>) -> TokenStream {
     match replicate {
@@ -21,7 +22,7 @@ pub fn codegen(spar_stream: SparStream) -> TokenStream {
     let SparStream {
         attrs,
         code,
-        stages,
+        mut stages,
     } = spar_stream;
 
     let input = &attrs.input;
@@ -38,24 +39,65 @@ pub fn codegen(spar_stream: SparStream) -> TokenStream {
     }
     .into();
 
-    codegen.extend(code);
-    for (i, stage) in stages.iter().enumerate() {
-        let input = &stage.attrs.input;
-        let output = &stage.attrs.output;
-        let replicate = gen_replicate(&stage.attrs.replicate);
+    let code = TokenBuffer::new2(code);
+    let mut location = 0;
 
-        codegen.extend(stage.code.clone().into_iter());
-        codegen.extend::<TokenStream>(
-            quote! {
-                println!("\tStage[{}]:", #i);
-                println!("\t\tInput:");
-                #(println!("\t\t\t{}", #input));*;
-                println!("\t\tOutput:");
-                #(println!("\t\t\t{}", #output));*;
-                println!("\t\tReplicate: {}", #replicate);
+    let cursor = code.begin();
+    let mut rest;
+    let mut groups_code = Vec::new();
+    let mut after_groups = vec![cursor];
+    while !after_groups.is_empty() {
+        rest = after_groups.pop().unwrap();
+        while let Some((token_tree, next)) = rest.token_tree() {
+            dbg!(location);
+            dbg!(&token_tree);
+            match &token_tree {
+                TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => {
+                    let (group_cursor, _, next) = rest.group(group.delimiter()).unwrap();
+                    groups_code.push(TokenStream::new());
+                    rest = group_cursor;
+                    after_groups.push(next);
+                }
+
+                _ => {
+                    token_tree.to_tokens(groups_code.last_mut().unwrap_or(&mut codegen));
+                    rest = next;
+                }
             }
-            .into(),
-        );
+
+            while let Some(stage) = stages.first() {
+                if location + 1 == stage.location {
+                    location += 1;
+                    let stage = stages.remove(0);
+                    let input = &stage.attrs.input;
+                    let output = &stage.attrs.output;
+                    let replicate = gen_replicate(&stage.attrs.replicate);
+                    let location = &stage.location;
+
+                    let c = groups_code.last_mut().unwrap_or(&mut codegen);
+                    c.extend(stage.code.clone().into_iter());
+                    c.extend::<TokenStream>(
+                        quote! {
+                            println!("\tStage[{}]:", #location);
+                            println!("\t\tInput:");
+                            #(println!("\t\t\t{}", #input));*;
+                            println!("\t\tOutput:");
+                            #(println!("\t\t\t{}", #output));*;
+                            println!("\t\tReplicate: {}", #replicate);
+                        }
+                        .into(),
+                    );
+                } else {
+                    break;
+                }
+            }
+
+            location += 1;
+        }
+        if let Some(code) = groups_code.pop() {
+            codegen
+                .extend(TokenTree::Group(Group::new(Delimiter::Brace, code)).into_token_stream());
+        }
     }
 
     codegen

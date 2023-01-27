@@ -8,9 +8,9 @@ use spar_stream::SparStream;
 pub fn to_stream(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     match SparStream::try_from(item) {
         Ok(spar_stream) => {
-            dbg!(&spar_stream.code);
+            //dbg!(&spar_stream.code);
             for stage in &spar_stream.stages {
-                dbg!(&stage.code);
+                //dbg!(&stage.code);
             }
             codegen(spar_stream).into()
         }

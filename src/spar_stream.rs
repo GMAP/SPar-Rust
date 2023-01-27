@@ -35,11 +35,16 @@ impl SparAttrs {
 pub struct SparStage {
     pub attrs: SparAttrs,
     pub code: TokenStream,
+    pub location: u32,
 }
 
 impl SparStage {
-    pub fn new(attrs: SparAttrs, code: TokenStream) -> Self {
-        Self { attrs, code }
+    pub fn new(attrs: SparAttrs, code: TokenStream, location: u32) -> Self {
+        Self {
+            attrs,
+            code,
+            location,
+        }
     }
 }
 
@@ -259,14 +264,17 @@ fn parse_spar_stages<'a>(
 
     let mut groups_code = Vec::new();
 
+    let mut location = 0;
     let mut after_groups = vec![cursor];
     while !after_groups.is_empty() {
         rest = after_groups.pop().unwrap();
         while let Some((token_tree, next)) = rest.token_tree() {
+            dbg!(location);
+            dbg!(&token_tree);
             match &token_tree {
                 TokenTree::Ident(ident) if ident.to_string() == "STAGE" => {
                     let (attrs, code, semicolon) = parse_spar_args(next)?;
-                    stages.push(SparStage::new(attrs, code));
+                    stages.push(SparStage::new(attrs, code, location));
 
                     match semicolon.token_tree() {
                         Some((token, next)) => match token {
@@ -291,12 +299,11 @@ fn parse_spar_stages<'a>(
                     rest = next;
                 }
             }
+            location += 1;
         }
 
         if let Some(code) = groups_code.pop() {
-            tokens.extend(
-                TokenTree::Group(Group::new(Delimiter::Brace, code)).into_token_stream(),
-            );
+            tokens.extend(TokenTree::Group(Group::new(Delimiter::Brace, code)).into_token_stream());
         }
     }
 
