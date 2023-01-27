@@ -1,3 +1,8 @@
+Code generation
+	basic stream analysis (based on Dalvan's thesis)
+	generate the actual code
+
+
 MAYBE:
 Add type information to Ident (user must write them)
 	Ex: INPUT(a: u32, b: String)

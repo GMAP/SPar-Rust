@@ -41,7 +41,9 @@ pub fn main() {
         }
     });
     to_stream!({
-        while true {
+        let mut k = 10;
+        while k > 0 {
+            k -= 1;
             for i in 0..3 {
                 match i {
                     0 => println!("hey"),
