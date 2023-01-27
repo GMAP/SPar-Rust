@@ -262,15 +262,13 @@ fn parse_spar_stages<'a>(
 ) -> Result<((), Cursor<'a>)> {
     let mut rest = cursor;
 
-    let mut groups_code = Vec::new();
+    let mut code_stack = vec![TokenStream::new()];
 
     let mut location = 0;
     let mut after_groups = vec![cursor];
     while !after_groups.is_empty() {
         rest = after_groups.pop().unwrap();
         while let Some((token_tree, next)) = rest.token_tree() {
-            dbg!(location);
-            dbg!(&token_tree);
             match &token_tree {
                 TokenTree::Ident(ident) if ident.to_string() == "STAGE" => {
                     let (attrs, code, semicolon) = parse_spar_args(next)?;
@@ -289,23 +287,25 @@ fn parse_spar_stages<'a>(
 
                 TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => {
                     let (group_cursor, _, next) = rest.group(group.delimiter()).unwrap();
-                    groups_code.push(TokenStream::new());
+                    code_stack.push(TokenStream::new());
                     after_groups.push(next);
                     rest = group_cursor;
                 }
 
                 _ => {
-                    token_tree.to_tokens(groups_code.last_mut().unwrap_or(tokens));
+                    token_tree.to_tokens(code_stack.last_mut().unwrap());
                     rest = next;
                 }
             }
             location += 1;
         }
 
-        if let Some(code) = groups_code.pop() {
-            tokens.extend(TokenTree::Group(Group::new(Delimiter::Brace, code)).into_token_stream());
+        if code_stack.len() > 1 {
+            let code = code_stack.pop().unwrap();
+            code_stack.last_mut().unwrap().extend(TokenTree::Group(Group::new(Delimiter::Brace, code)).into_token_stream());
         }
     }
 
+    *tokens = code_stack.pop().unwrap();
     Ok(((), rest))
 }

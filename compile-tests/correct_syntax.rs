@@ -40,4 +40,22 @@ pub fn main() {
             });
         }
     });
+    to_stream!({
+        while true {
+            for i in 0..3 {
+                match i {
+                    0 => println!("hey"),
+                    1 => println!("hi"),
+                    2 => {
+                        for j in i..5 {
+                            STAGE(INPUT(j), {
+                                println!("hi from stage: {j}");
+                            });
+                        }
+                    }
+                    _ => println!("OH NO"),
+                }
+            }
+        }
+    });
 }
