@@ -3,7 +3,7 @@ use std::num::NonZeroU32;
 use crate::spar_stream::{SparAttrs, SparStream};
 use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
 use quote::{quote, ToTokens};
-use syn::buffer::TokenBuffer;
+use syn::buffer::{Cursor, TokenBuffer};
 
 ///Note: replicate defaults to 1 when it is not given.
 ///If REPLICATE argument exists, then it defaults to what was written in the code
@@ -65,54 +65,66 @@ fn spar_code_top_level(attrs: &SparAttrs) -> TokenStream {
     code
 }
 
-pub fn codegen(spar_stream: SparStream) -> TokenStream {
-    let SparStream {
-        attrs,
-        code,
-        mut stages,
-    } = spar_stream;
+/// generates the necessary channels for communition between the SPar Stages
+fn generate_channels(_spar_stream: &SparStream) -> TokenStream {
+    //TODO: we must analyze the stream to find the pairs output / input, then we generate all the
+    //necessary channels at the top level. WE MUST ALSO FIND A WAY OF STORING THIS INFORMATION
+    //(which channels go to which stage)
+    todo!()
+}
 
-    let code = TokenBuffer::new2(code);
-    let mut location = 0;
+fn skip_attributes(cursor: Cursor) -> Cursor {
+    let mut rest = cursor;
+    while let Some((tt, next)) = rest.token_tree() {
+        if let TokenTree::Group(group) = tt {
+            if group.delimiter() == Delimiter::Brace {
+                let (group_cursor, _, _) = rest.group(group.delimiter()).unwrap();
+                rest = group_cursor;
+                break;
+            }
+        }
+        rest = next;
+    }
+    rest
+}
 
-    let cursor = code.begin();
-    let mut rest;
+pub fn codegen(spar_stream: SparStream, code: proc_macro::TokenStream) -> TokenStream {
+    let SparStream { attrs, mut stages } = spar_stream;
+
+    let code = TokenBuffer::new(code);
+    let cursor = skip_attributes(code.begin());
     let mut code_stack = vec![spar_code_top_level(&attrs)];
     let mut after_groups = vec![cursor];
     while !after_groups.is_empty() {
-        rest = after_groups.pop().unwrap();
+        let mut rest = after_groups.pop().unwrap();
         while let Some((token_tree, next)) = rest.token_tree() {
             match &token_tree {
+                TokenTree::Ident(ident) if *ident == "STAGE" => {
+                    let (in_group, _, after_group) = next.group(Delimiter::Parenthesis).unwrap();
+                    code_stack.push(TokenStream::new());
+                    after_groups.push(after_group);
+                    rest = skip_attributes(in_group);
+
+                    // Generate the stage's code:
+                    let stage = stages.remove(0);
+                    let _input = &stage.attrs.input;
+                    let _output = &stage.attrs.output;
+                    let _replicate = gen_replicate(&stage.attrs.replicate);
+                    let c = code_stack.last_mut().unwrap();
+                    c.extend(quote!(println!("replicate: {:?}", #_replicate);));
+                }
+
                 TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => {
                     let (group_cursor, _, next) = rest.group(group.delimiter()).unwrap();
                     code_stack.push(TokenStream::new());
                     rest = group_cursor;
                     after_groups.push(next);
                 }
-
                 _ => {
                     token_tree.to_tokens(code_stack.last_mut().unwrap());
                     rest = next;
                 }
             }
-
-            while let Some(stage) = stages.first() {
-                if location + 1 == stage.location {
-                    location += 1;
-                    let stage = stages.remove(0);
-                    let _input = &stage.attrs.input;
-                    let _output = &stage.attrs.output;
-                    let _replicate = gen_replicate(&stage.attrs.replicate);
-                    let _location = &stage.location;
-                    let c = code_stack.last_mut().unwrap();
-                    c.extend(stage.code.clone().into_iter());
-                    c.extend(quote!(println!("replicate: {:?}", #_replicate);));
-                } else {
-                    break;
-                }
-            }
-
-            location += 1;
         }
         if code_stack.len() > 1 {
             let code = code_stack.pop().unwrap();
