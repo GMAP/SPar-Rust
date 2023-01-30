@@ -1,3 +1,10 @@
+From Dalvan's thesis:
+	* literals are not accepted as Input or Output
+	* empty Input and Output are not accepted
+	* replicate could be empty:
+		Only if it is empty, we use SPAR_NUM_WORKERS
+	* if replicate is not present, we always use 1
+
 Organize repository with workspaces, and proper testing
 
 Code generation
