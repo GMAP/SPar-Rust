@@ -1,26 +1,16 @@
-use std::{path::Path, process::Stdio};
-
-const DEPS_PATH: &'static str = "target/debug/deps";
+use std::{
+    path::{Path, PathBuf},
+    process::Stdio,
+};
 
 fn try_compile(source: &Path) -> bool {
-    let deps = Path::new(DEPS_PATH);
-    let mut spar_dep = deps.to_path_buf();
-    for file in deps.read_dir().unwrap() {
-        let file = file.unwrap();
-        let filename = file.file_name();
-        let filename = filename.to_string_lossy();
-        if filename.starts_with("libspar_rust") && filename.ends_with(".so") {
-            spar_dep.push(filename.to_string());
-        }
-    }
-
     match std::process::Command::new("rustc")
         .arg("+nightly")
         .arg("-Zunpretty=expanded") // This is necessary so that rust tries to expand the macros
         .arg("-Zparse-only") // This means we won't generate a binary
         .arg(source.to_string_lossy().to_string())
         .arg("--extern")
-        .arg("spar_rust=".to_string() + spar_dep.to_str().unwrap())
+        .arg("spar_rust=target/debug/libspar_rust.so")
         // NOTE: comment these out to see the diagnostic messages when compilation fails
         .stderr(Stdio::null())
         .stdout(Stdio::null())
@@ -34,16 +24,21 @@ fn try_compile(source: &Path) -> bool {
     }
 }
 
-#[test]
-fn should_compile() {
-    assert!(try_compile(Path::new("compile-tests/correct_syntax.rs")))
-}
+fn main() -> Result<(), String> {
+    let mut args = std::env::args();
+    let program_name = args.next().unwrap();
+    let path = match args.next() {
+        Some(arg) => PathBuf::from(arg),
+        None => return Err(format!("usage: {program_name} <crate top-level directory>")),
+    };
 
-#[test]
-fn should_not_compile() {
-    let files = Path::new("compile-tests/incorrect_syntax")
-        .read_dir()
-        .unwrap();
+    let mut correct_syntax = path.clone();
+    correct_syntax.push(Path::new("tests/syntax/syntax-tests/correct_syntax.rs"));
+    assert!(try_compile(&correct_syntax), "correct syntax failed to compile");
+
+    let mut incorrect_syntax = path;
+    incorrect_syntax.push(Path::new("tests/syntax/syntax-tests/incorrect_syntax"));
+    let files = incorrect_syntax.read_dir().unwrap();
     for file in files {
         let file = file.unwrap();
         assert!(
@@ -52,4 +47,6 @@ fn should_not_compile() {
             file.path().to_string_lossy()
         );
     }
+
+    Ok(())
 }

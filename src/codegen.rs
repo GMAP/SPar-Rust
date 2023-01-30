@@ -65,6 +65,28 @@ fn spar_code_top_level(attrs: &SparAttrs) -> TokenStream {
     code
 }
 
+fn gen_variables(attrs: &SparAttrs) -> TokenStream {
+    let mut code = TokenStream::new();
+    let replicate = gen_replicate(&attrs.replicate);
+
+    // Create input variables
+    for identifier in &attrs.input {
+        code.extend(quote! {
+            let #identifier = #identifier;
+        })
+    }
+
+    // Create output variables
+    for identifier in &attrs.output {
+        code.extend(quote! {
+            let #identifier;
+        })
+    }
+
+    code.extend(quote!(println!("replicate: {:?}", #replicate);));
+    code
+}
+
 /// generates the necessary channels for communition between the SPar Stages
 fn generate_channels(_spar_stream: &SparStream) -> TokenStream {
     //TODO: we must analyze the stream to find the pairs output / input, then we generate all the
@@ -95,6 +117,7 @@ pub fn codegen(spar_stream: SparStream, code: proc_macro::TokenStream) -> TokenS
     let cursor = skip_attributes(code.begin());
     let mut code_stack = vec![spar_code_top_level(&attrs)];
     let mut after_groups = vec![cursor];
+
     while !after_groups.is_empty() {
         let mut rest = after_groups.pop().unwrap();
         while let Some((token_tree, next)) = rest.token_tree() {
@@ -107,11 +130,8 @@ pub fn codegen(spar_stream: SparStream, code: proc_macro::TokenStream) -> TokenS
 
                     // Generate the stage's code:
                     let stage = stages.remove(0);
-                    let _input = &stage.attrs.input;
-                    let _output = &stage.attrs.output;
-                    let _replicate = gen_replicate(&stage.attrs.replicate);
                     let c = code_stack.last_mut().unwrap();
-                    c.extend(quote!(println!("replicate: {:?}", #_replicate);));
+                    c.extend(gen_variables(&stage.attrs));
                 }
 
                 TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => {
