@@ -65,25 +65,24 @@ impl TryFrom<&proc_macro::TokenStream> for SparStream {
     }
 }
 
-fn get_identifiers(cursor: Cursor) -> Result<(Vec<Ident>, Cursor)> {
-    let args;
-    let after;
+/// returns (arguments inside, after parenthesis)
+fn skip_parenthesis(cursor: Cursor) -> Result<(Cursor, Cursor)> {
     match cursor.group(Delimiter::Parenthesis) {
-        Some((a, _, r)) => {
-            args = a;
-            after = r;
-        }
+        Some((a, _, r)) => Ok((a, r)),
         None => {
             let msg = match cursor.token_tree() {
                 Some((tt, _)) => {
                     std::format!("expected arguments, in parenthesis `()`, found: {tt}")
                 }
-
                 None => "expected arguments, in parenthesis `()`, found: nothing".to_owned(),
             };
-            return Err(syn::Error::new(cursor.span(), msg));
+            Err(syn::Error::new(cursor.span(), msg))
         }
-    };
+    }
+}
+
+fn get_identifiers(cursor: Cursor) -> Result<(Vec<Ident>, Cursor)> {
+    let (args, after) = skip_parenthesis(cursor)?;
     let mut rest = args;
     let mut idents = Vec::new();
     while let Some((token_tree, next)) = rest.token_tree() {
@@ -139,24 +138,7 @@ fn parse_replicate(cursor: Cursor) -> Result<(NonZeroU32, Cursor)> {
 }
 
 fn parse_spar_args(cursor: Cursor) -> Result<(SparAttrs, Cursor, Cursor)> {
-    let args;
-    let after;
-    match cursor.group(Delimiter::Parenthesis) {
-        Some((a, _, r)) => {
-            args = a;
-            after = r;
-        }
-        None => {
-            let msg = match cursor.token_tree() {
-                Some((tt, _)) => {
-                    std::format!("expected SPAR arguments, in parenthesis `()`, found: {tt}")
-                }
-
-                None => "expected SPAR arguments, in parenthesis `()`, found: nothing".to_owned(),
-            };
-            return Err(syn::Error::new(cursor.span(), msg));
-        }
-    };
+    let (args, after) = skip_parenthesis(cursor)?;
 
     let mut input: Vec<Ident> = Vec::new();
     let mut output: Vec<Ident> = Vec::new();
@@ -176,6 +158,9 @@ fn parse_spar_args(cursor: Cursor) -> Result<(SparAttrs, Cursor, Cursor)> {
                         ));
                     }
                     let (i, next) = get_identifiers(next)?;
+                    if i.is_empty() {
+                        return Err(syn::Error::new(rest.span(), "INPUT cannot be empty"));
+                    }
                     input = i;
                     rest = next;
                 }
@@ -187,6 +172,9 @@ fn parse_spar_args(cursor: Cursor) -> Result<(SparAttrs, Cursor, Cursor)> {
                         ));
                     }
                     let (o, next) = get_identifiers(next)?;
+                    if o.is_empty() {
+                        return Err(syn::Error::new(rest.span(), "OUTPUT cannot be empty"));
+                    }
                     output = o;
                     rest = next;
                 }
@@ -485,5 +473,35 @@ mod tests {
         let replicate = NonZeroU32::new(5);
         let expected_attrs = SparAttrs::new(input, output, replicate);
         assert_eq!(spar_stages.pop().unwrap(), SparStage::new(expected_attrs));
+    }
+
+    #[test]
+    #[should_panic]
+    fn input_cannot_be_a_literal() {
+        let tokens = quote! {
+            STAGE(INPUT(10), {});
+        };
+
+        let _spar_stages = parse_spar_stages(TokenBuffer::new2(tokens).begin()).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn input_cannot_be_empty() {
+        let tokens = quote! {
+            STAGE(INPUT(), {});
+        };
+
+        let _spar_stages = parse_spar_stages(TokenBuffer::new2(tokens).begin()).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn output_cannot_be_empty() {
+        let tokens = quote! {
+            STAGE(OUTPUT(), {});
+        };
+
+        let _spar_stages = parse_spar_stages(TokenBuffer::new2(tokens).begin()).unwrap();
     }
 }
