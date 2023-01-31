@@ -1,9 +1,82 @@
 use std::num::NonZeroU32;
 
 use crate::spar_stream::{SparAttrs, SparStream};
-use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
+use proc_macro2::{Delimiter, Group, Ident, TokenStream, TokenTree};
 use quote::{quote, ToTokens};
 use syn::buffer::{Cursor, TokenBuffer};
+
+pub trait Emitter {
+    /// How we send the values into the Worker
+    fn gen_emit(&self, inputs: &[Ident]) -> TokenStream;
+    /// How we get the values, while inside the Worker
+    fn gen_collect(&self, inputs: &[Ident]) -> TokenStream;
+}
+
+pub trait Collector {
+    /// How we send the values from the Worker
+    fn gen_emit(&self, outputs: &[Ident]) -> TokenStream;
+    /// How we get the values, outside the Worker
+    fn gen_collect(&self, outputs: &[Ident]) -> TokenStream;
+}
+
+pub trait Worker {
+    /// How we paralellize the code
+    fn gen_worker(&self, code: TokenStream) -> TokenStream;
+}
+
+struct Farm {
+    worker: Box<dyn Worker>,
+    emitter: Option<Box<dyn Emitter>>,
+    collector: Option<Box<dyn Collector>>,
+}
+
+impl Farm {
+    fn new(
+        worker: Box<dyn Worker>,
+        emitter: Option<Box<dyn Emitter>>,
+        collector: Option<Box<dyn Collector>>,
+    ) -> Self {
+        Self {
+            worker,
+            emitter,
+            collector,
+        }
+    }
+
+    fn gen_farm(self, inputs: &[Ident], outputs: &[Ident], code: TokenStream) -> TokenStream {
+        let mut tokens = TokenStream::new();
+        let mut worker_code = TokenStream::new();
+        if let Some(emitter) = self.emitter {
+            tokens.extend(emitter.gen_emit(inputs));
+            worker_code.extend(emitter.gen_collect(inputs));
+        }
+
+        worker_code.extend(self.worker.gen_worker(code));
+
+        if let Some(collector) = self.collector {
+            worker_code.extend(collector.gen_emit(outputs));
+            tokens.extend(Group::new(Delimiter::Brace, worker_code).into_token_stream());
+            tokens.extend(collector.gen_collect(outputs));
+        } else {
+            tokens.extend(Group::new(Delimiter::Brace, worker_code).into_token_stream());
+        }
+
+        tokens
+    }
+}
+
+trait PipeImpl {
+
+}
+
+enum PipeStage {
+    Code(TokenStream),
+    Farm,
+}
+
+struct Pipe {
+    stages: Vec<PipeStage>,
+}
 
 ///Note: replicate defaults to 1 when it is not given.
 ///If REPLICATE argument exists, then it defaults to what was written in the code
@@ -165,6 +238,6 @@ pub fn codegen(spar_stream: SparStream, code: proc_macro::TokenStream) -> TokenS
 //
 //    #[test]
 //    fn should_() {
-//        
+//
 //    }
 //}

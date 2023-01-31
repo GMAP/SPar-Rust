@@ -29,13 +29,13 @@ Rules:
 	2 - if the block is a stage with R_n, it can only be an argument of W. If
 	Rule 1 is satisfied, the predecessor block becomes E and the successor
 	becomes C
-	3 - T can only become a farm() if:
+	3 - T_id can only become a farm() if:
 		There are at most two stages in the sentence; AND
 		Only the first stage contains an R_n
-	4 - T can only become a pipe() if:
+	4 - T_id can only become a pipe() if:
 		There more than two stages in the sentence; OR
 		The fist stage does not have R_n
-	5 - farm() is a stage inside a pipe() when ruler 3 failed and the stage
+	5 - farm() is a stage inside a pipe() when rule 3 failed and the stage
 	contains a R_n
 
 
