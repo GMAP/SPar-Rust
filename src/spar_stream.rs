@@ -16,6 +16,7 @@ mod kw {
     syn::custom_keyword!(REPLICATE);
 }
 
+#[derive(Debug, PartialEq)]
 pub struct SparAttrs {
     pub input: Vec<Ident>,
     pub output: Vec<Ident>,
@@ -32,6 +33,7 @@ impl SparAttrs {
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub struct SparStage {
     pub attrs: SparAttrs,
 }
@@ -237,7 +239,11 @@ fn parse_spar_args(cursor: Cursor) -> Result<(SparAttrs, Cursor, Cursor)> {
         ));
     }
 
-    Ok((SparAttrs::new(input, output, replicate), after, block_cursor))
+    Ok((
+        SparAttrs::new(input, output, replicate),
+        after,
+        block_cursor,
+    ))
 }
 
 fn parse_spar_stages(cursor: Cursor) -> Result<Vec<SparStage>> {
@@ -275,4 +281,209 @@ fn parse_spar_stages(cursor: Cursor) -> Result<Vec<SparStage>> {
     }
 
     Ok(stages)
+}
+
+#[cfg(test)]
+mod tests {
+    use proc_macro2::{Span, TokenStream};
+    use quote::quote;
+
+    use super::*;
+
+    /// Returns the span of the first instance of an identifier with the same name
+    fn get_ident_span(identifier: &'static str, tokens: TokenStream) -> Option<Span> {
+        let buffer = TokenBuffer::new2(tokens);
+        let cursor = buffer.begin();
+
+        let mut groups = vec![cursor];
+        while !groups.is_empty() {
+            let mut rest = groups.pop().unwrap();
+            while let Some((token_tree, next)) = rest.token_tree() {
+                match &token_tree {
+                    TokenTree::Ident(ident) if *ident == identifier => {
+                        return Some(ident.span());
+                    }
+
+                    TokenTree::Group(group) => {
+                        let (group_cursor, _, next) = rest.group(group.delimiter()).unwrap();
+                        groups.push(next);
+                        rest = group_cursor;
+                    }
+
+                    _ => rest = next,
+                }
+            }
+        }
+
+        None
+    }
+
+    fn get_spans(idents: &[&'static str], tokens: &TokenStream) -> Vec<Ident> {
+        let mut vec = Vec::new();
+
+        for i in idents {
+            let span =
+                get_ident_span(i, tokens.clone()).expect("Failed to find identifier in stream");
+            vec.push(Ident::new(i, span));
+        }
+
+        vec
+    }
+
+    #[test]
+    fn stage_no_attributes() {
+        let tokens = quote! {
+            STAGE({
+                // Put some dummy code just to make sure nothing will break
+                let mut a = 10;
+                while true {
+                    a += 1;
+                }
+            });
+        };
+
+        let mut spar_stages = parse_spar_stages(TokenBuffer::new2(tokens).begin()).unwrap();
+        assert_eq!(spar_stages.len(), 1);
+
+        let expected_attrs = SparAttrs::new(Vec::new(), Vec::new(), None);
+        assert_eq!(spar_stages.pop().unwrap(), SparStage::new(expected_attrs));
+    }
+
+    #[test]
+    fn stage_with_input() {
+        let tokens = quote! {
+            STAGE(INPUT(a), {
+                while true {
+                    a += 1;
+                }
+            });
+        };
+
+        let mut spar_stages = parse_spar_stages(TokenBuffer::new2(tokens.clone()).begin()).unwrap();
+        assert_eq!(spar_stages.len(), 1);
+
+        let input = get_spans(&["a"], &tokens);
+        let output = vec![];
+        let replicate = None;
+        let expected_attrs = SparAttrs::new(input, output, replicate);
+        assert_eq!(spar_stages.pop().unwrap(), SparStage::new(expected_attrs));
+    }
+
+    #[test]
+    fn stage_with_multiple_inputs() {
+        let tokens = quote! {
+            STAGE(INPUT(a, b, c), {
+                while true {
+                    a += 1;
+                    b += 2,
+                    c += 3;
+                }
+            });
+        };
+
+        let mut spar_stages = parse_spar_stages(TokenBuffer::new2(tokens.clone()).begin()).unwrap();
+        assert_eq!(spar_stages.len(), 1);
+
+        let input = get_spans(&["a", "b", "c"], &tokens);
+        let output = vec![];
+        let replicate = None;
+        let expected_attrs = SparAttrs::new(input, output, replicate);
+        assert_eq!(spar_stages.pop().unwrap(), SparStage::new(expected_attrs));
+    }
+
+    #[test]
+    fn stage_with_output() {
+        let tokens = quote! {
+            STAGE(OUTPUT(a), {
+                while true {
+                    a += 1;
+                }
+            });
+        };
+
+        let mut spar_stages = parse_spar_stages(TokenBuffer::new2(tokens.clone()).begin()).unwrap();
+        assert_eq!(spar_stages.len(), 1);
+
+        let input = vec![];
+        let output = get_spans(&["a"], &tokens);
+        let replicate = None;
+        let expected_attrs = SparAttrs::new(input, output, replicate);
+        assert_eq!(spar_stages.pop().unwrap(), SparStage::new(expected_attrs));
+    }
+
+    #[test]
+    fn stage_with_multiple_outputs() {
+        let tokens = quote! {
+            STAGE(OUTPUT(a, b, c), {
+                while true {
+                    a += 1;
+                    b += 2,
+                    c += 3;
+                }
+            });
+        };
+
+        let mut spar_stages = parse_spar_stages(TokenBuffer::new2(tokens.clone()).begin()).unwrap();
+        assert_eq!(spar_stages.len(), 1);
+
+        let input = vec![];
+        let output = get_spans(&["a", "b", "c"], &tokens);
+        let replicate = None;
+        let expected_attrs = SparAttrs::new(input, output, replicate);
+        assert_eq!(spar_stages.pop().unwrap(), SparStage::new(expected_attrs));
+    }
+
+    #[test]
+    fn stage_with_replicate() {
+        let tokens = quote! {
+            STAGE(REPLICATE = 5, {
+                // Put some dummy code just to make sure nothing will break
+                let mut a = 10;
+                while true {
+                    a += 1;
+                }
+            });
+        };
+
+        let mut spar_stages = parse_spar_stages(TokenBuffer::new2(tokens).begin()).unwrap();
+        assert_eq!(spar_stages.len(), 1);
+
+        let expected_attrs = SparAttrs::new(Vec::new(), Vec::new(), NonZeroU32::new(5));
+        assert_eq!(spar_stages.pop().unwrap(), SparStage::new(expected_attrs));
+    }
+
+    #[test]
+    fn multiple_stages() {
+        let tokens = quote! {
+            STAGE({});
+            STAGE(INPUT(a), OUTPUT(b), {});
+            STAGE(INPUT(c, d), OUTPUT(e, f, g), {});
+            STAGE(INPUT(h), OUTPUT(i), REPLICATE = 5, {});
+        };
+
+        let mut spar_stages = parse_spar_stages(TokenBuffer::new2(tokens.clone()).begin()).unwrap();
+        assert_eq!(spar_stages.len(), 4);
+        spar_stages.reverse();
+
+        let expected_attrs = SparAttrs::new(Vec::new(), Vec::new(), None);
+        assert_eq!(spar_stages.pop().unwrap(), SparStage::new(expected_attrs));
+
+        let input = get_spans(&["a"], &tokens);
+        let output = get_spans(&["b"], &tokens);
+        let replicate = None;
+        let expected_attrs = SparAttrs::new(input, output, replicate);
+        assert_eq!(spar_stages.pop().unwrap(), SparStage::new(expected_attrs));
+
+        let input = get_spans(&["c", "d"], &tokens);
+        let output = get_spans(&["e", "f", "g"], &tokens);
+        let replicate = None;
+        let expected_attrs = SparAttrs::new(input, output, replicate);
+        assert_eq!(spar_stages.pop().unwrap(), SparStage::new(expected_attrs));
+
+        let input = get_spans(&["h"], &tokens);
+        let output = get_spans(&["i"], &tokens);
+        let replicate = NonZeroU32::new(5);
+        let expected_attrs = SparAttrs::new(input, output, replicate);
+        assert_eq!(spar_stages.pop().unwrap(), SparStage::new(expected_attrs));
+    }
 }

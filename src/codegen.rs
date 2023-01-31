@@ -157,3 +157,14 @@ pub fn codegen(spar_stream: SparStream, code: proc_macro::TokenStream) -> TokenS
 
     TokenTree::Group(Group::new(Delimiter::Brace, code_stack.pop().unwrap())).into_token_stream()
 }
+
+//TODO: test the code generation, once we figure it out
+//#[cfg(test)]
+//mod tests {
+//    use super::*;
+//
+//    #[test]
+//    fn should_() {
+//        
+//    }
+//}

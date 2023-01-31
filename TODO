@@ -6,6 +6,7 @@ From Dalvan's thesis:
 	* if replicate is not present, we always use 1
 
 Organize repository with workspaces, and proper testing
+	use quote to generate token streams we can use for testing
 
 Code generation
 	basic stream analysis (based on Dalvan's thesis)
