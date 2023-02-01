@@ -10,6 +10,15 @@ for directory in "$SCRIPT_DIR"/tests/*; do
 	fi
 
 	PACKAGE="$(basename "$directory")"
-	(cargo build --quiet --package "$PACKAGE" && ./target/debug/"$PACKAGE" "$SCRIPT_DIR" && echo "$PACKAGE passed") \
-		|| echo "$PACKAGE TEST FAILED"
+	if ! cargo build --quiet --package "$PACKAGE"; then
+		echo "$PACKAGE TEST COMPILATION FAILED"
+		continue
+	fi
+
+	if ! ./target/debug/"$PACKAGE" "$SCRIPT_DIR"; then
+		echo "$PACKAGE TEST EXECUTION FAILED"
+		continue
+	fi
+
+	echo "$PACKAGE test passed"
 done

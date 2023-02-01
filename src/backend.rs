@@ -17,22 +17,21 @@ pub fn make_tuple(identifiers: &[Ident]) -> TokenStream {
 
 pub trait Messenger {
     fn gen_prep(&mut self) -> TokenStream;
-    fn gen_send(&mut self) -> TokenStream;
-    fn gen_recv(&mut self) -> TokenStream;
+    fn gen_send(&mut self, identifiers: &[Ident]) -> TokenStream;
+    fn gen_recv(&mut self, identifiers: &[Ident]) -> TokenStream;
+    fn gen_finish(&mut self) -> TokenStream;
 }
 
 pub struct ChannelMessenger {
     id: u32,
     sender: Option<Ident>,
     receiver: Option<Ident>,
-    identifiers: Vec<Ident>,
 }
 
 impl ChannelMessenger {
-    pub fn new(identifiers: Vec<Ident>) -> Self {
+    pub fn new() -> Self {
         Self {
             id: 0,
-            identifiers,
             sender: None,
             receiver: None,
         }
@@ -41,6 +40,10 @@ impl ChannelMessenger {
 
 impl Messenger for ChannelMessenger {
     fn gen_prep(&mut self) -> TokenStream {
+        if self.sender.is_some() || self.receiver.is_some() {
+            panic!("ChannelMessenger has already been prepared");
+        }
+
         let sender = format!("channel_messenger_sender_{}", self.id);
         let sender = Ident::new(&sender, Span::call_site());
         let receiver = format!("channel_messenger_receiver_{}", self.id);
@@ -55,8 +58,8 @@ impl Messenger for ChannelMessenger {
         tokens
     }
 
-    fn gen_send(&mut self) -> TokenStream {
-        let tuple = make_tuple(&self.identifiers);
+    fn gen_send(&mut self, identifiers: &[Ident]) -> TokenStream {
+        let tuple = make_tuple(identifiers);
         let sender = self
             .sender
             .as_ref()
@@ -67,8 +70,8 @@ impl Messenger for ChannelMessenger {
         }
     }
 
-    fn gen_recv(&mut self) -> TokenStream {
-        let tuple = make_tuple(&self.identifiers);
+    fn gen_recv(&mut self, identifiers: &[Ident]) -> TokenStream {
+        let tuple = make_tuple(identifiers);
         let receiver = self
             .receiver
             .as_ref()
@@ -77,5 +80,11 @@ impl Messenger for ChannelMessenger {
         quote! {
             let (#tuple) = #receiver.recv().unwrap();
         }
+    }
+
+    fn gen_finish(&mut self) -> TokenStream {
+        self.sender = None;
+        self.receiver = None;
+        quote! {}
     }
 }

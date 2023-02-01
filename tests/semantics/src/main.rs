@@ -18,8 +18,9 @@ fn main() -> Result<(), String> {
             for _ in 0..10 {
                 a += 1;
             }
-            b = a;
+            let b = a;
         });
+        println!("b: {b}");
     });
 
     Ok(())

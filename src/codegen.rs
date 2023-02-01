@@ -1,11 +1,12 @@
 use std::num::NonZeroU32;
 
-use crate::spar_stream::{SparAttrs, SparStream};
-use proc_macro2::{Delimiter, Group, Ident, TokenStream, TokenTree};
+use crate::{
+    backend::{ChannelMessenger, Messenger},
+    spar_stream::{SparAttrs, SparStream},
+};
+use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
 use quote::{quote, ToTokens};
 use syn::buffer::{Cursor, TokenBuffer};
-
-use crate::backend;
 
 ///Note: replicate defaults to 1 when it is not given.
 ///If REPLICATE argument exists, then it defaults to what was written in the code
@@ -67,34 +68,36 @@ fn spar_code_top_level(attrs: &SparAttrs) -> TokenStream {
     code
 }
 
-fn gen_variables(attrs: &SparAttrs) -> TokenStream {
-    let mut code = TokenStream::new();
+fn gen_stage<M: Messenger>(attrs: &SparAttrs, messenger: &mut M, code: TokenStream) -> TokenStream {
+    let mut pre_worker_code = TokenStream::new();
+    let mut worker_code = TokenStream::new();
+    let mut post_worker_code = TokenStream::new();
+
     let replicate = gen_replicate(&attrs.replicate);
+    worker_code.extend(quote!(println!("replicate: {:?}", #replicate);));
 
-    // Create input variables
-    for identifier in &attrs.input {
-        code.extend(quote! {
-            let #identifier = #identifier;
-        })
+    if !attrs.input.is_empty() {
+        pre_worker_code.extend(messenger.gen_prep());
+        pre_worker_code.extend(messenger.gen_send(&attrs.input));
+        worker_code.extend(messenger.gen_recv(&attrs.input));
+        post_worker_code.extend(messenger.gen_finish());
     }
 
-    // Create output variables
-    for identifier in &attrs.output {
-        code.extend(quote! {
-            let #identifier;
-        })
+    worker_code.extend(code);
+
+    if !attrs.output.is_empty() {
+        pre_worker_code.extend(messenger.gen_prep());
+        worker_code.extend(messenger.gen_send(&attrs.output));
+        post_worker_code.extend(messenger.gen_recv(&attrs.output));
+        post_worker_code.extend(messenger.gen_finish());
     }
 
-    code.extend(quote!(println!("replicate: {:?}", #replicate);));
-    code
-}
+    let mut generated_code = TokenStream::new();
+    generated_code.extend(pre_worker_code);
+    generated_code.extend(Group::new(Delimiter::Brace, worker_code).to_token_stream());
+    generated_code.extend(post_worker_code);
 
-/// generates the necessary channels for communition between the SPar Stages
-fn generate_channels(_spar_stream: &SparStream) -> TokenStream {
-    //TODO: we must analyze the stream to find the pairs output / input, then we generate all the
-    //necessary channels at the top level. WE MUST ALSO FIND A WAY OF STORING THIS INFORMATION
-    //(which channels go to which stage)
-    todo!()
+    generated_code
 }
 
 fn skip_attributes(cursor: Cursor) -> Cursor {
@@ -115,6 +118,7 @@ fn skip_attributes(cursor: Cursor) -> Cursor {
 pub fn codegen(spar_stream: SparStream, code: proc_macro::TokenStream) -> TokenStream {
     let SparStream { attrs, mut stages } = spar_stream;
 
+    let mut messenger = ChannelMessenger::new();
     let code = TokenBuffer::new(code);
     let cursor = skip_attributes(code.begin());
     let mut code_stack = vec![spar_code_top_level(&attrs)];
@@ -126,16 +130,17 @@ pub fn codegen(spar_stream: SparStream, code: proc_macro::TokenStream) -> TokenS
             match &token_tree {
                 TokenTree::Ident(ident) if *ident == "STAGE" => {
                     let (in_group, _, after_group) = next.group(Delimiter::Parenthesis).unwrap();
-                    code_stack.push(TokenStream::new());
-                    after_groups.push(after_group);
-                    rest = skip_attributes(in_group);
 
-                    // Generate the stage's code:
                     let stage = stages.remove(0);
-                    let c = code_stack.last_mut().unwrap();
-                    c.extend(gen_variables(&stage.attrs));
+                    let stage_code = gen_stage(
+                        &stage.attrs,
+                        &mut messenger,
+                        skip_attributes(in_group).token_stream(),
+                    );
+                    code_stack.last_mut().unwrap().extend(stage_code);
+                    // Make sure to skip the ';'
+                    rest = after_group.token_tree().unwrap().1;
                 }
-
                 TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => {
                     let (group_cursor, _, next) = rest.group(group.delimiter()).unwrap();
                     code_stack.push(TokenStream::new());
