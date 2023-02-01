@@ -1,5 +1,6 @@
 mod codegen;
 mod spar_stream;
+mod backend;
 
 use codegen::codegen;
 use spar_stream::SparStream;
