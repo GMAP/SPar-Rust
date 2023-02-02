@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
 
 use crate::{
-    backend::{ChannelMessenger, Messenger},
+    backend::{CrossbeamMessenger, Messenger},
     spar_stream::{SparAttrs, SparStream},
 };
 use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
@@ -73,6 +73,9 @@ fn gen_stage<M: Messenger>(attrs: &SparAttrs, messenger: &mut M, code: TokenStre
     let mut worker_code = TokenStream::new();
     let mut post_worker_code = TokenStream::new();
 
+    let mut sender_clone = TokenStream::new();
+    let mut receiver_clone = TokenStream::new();
+
     let replicate = gen_replicate(&attrs.replicate);
     worker_code.extend(quote!(println!("replicate: {:?}", #replicate);));
 
@@ -80,6 +83,8 @@ fn gen_stage<M: Messenger>(attrs: &SparAttrs, messenger: &mut M, code: TokenStre
         pre_worker_code.extend(messenger.gen_prep());
         pre_worker_code.extend(messenger.gen_send(&attrs.input));
         worker_code.extend(messenger.gen_recv(&attrs.input));
+        receiver_clone = messenger.gen_receiver_clone();
+
         post_worker_code.extend(messenger.gen_finish());
     }
 
@@ -89,15 +94,25 @@ fn gen_stage<M: Messenger>(attrs: &SparAttrs, messenger: &mut M, code: TokenStre
         pre_worker_code.extend(messenger.gen_prep());
         worker_code.extend(messenger.gen_send(&attrs.output));
         post_worker_code.extend(messenger.gen_recv(&attrs.output));
+        sender_clone = messenger.gen_sender_clone();
+
         post_worker_code.extend(messenger.gen_finish());
     }
 
-    let mut generated_code = TokenStream::new();
-    generated_code.extend(pre_worker_code);
-    generated_code.extend(Group::new(Delimiter::Brace, worker_code).to_token_stream());
-    generated_code.extend(post_worker_code);
-
-    generated_code
+    quote! {
+        #pre_worker_code
+        for _ in 0..#replicate {
+            #receiver_clone
+            #sender_clone
+            std::thread::Builder::new()
+                .name("SPar worker".to_string())
+                .spawn(move || {
+                    #worker_code
+                })
+                .expect("Failed to spawn SPar worker");
+        }
+        #post_worker_code
+    }
 }
 
 fn skip_attributes(cursor: Cursor) -> Cursor {
@@ -118,7 +133,7 @@ fn skip_attributes(cursor: Cursor) -> Cursor {
 pub fn codegen(spar_stream: SparStream, code: proc_macro::TokenStream) -> TokenStream {
     let SparStream { attrs, mut stages } = spar_stream;
 
-    let mut messenger = ChannelMessenger::new();
+    let mut messenger = CrossbeamMessenger::new();
     let code = TokenBuffer::new(code);
     let cursor = skip_attributes(code.begin());
     let mut code_stack = vec![spar_code_top_level(&attrs)];

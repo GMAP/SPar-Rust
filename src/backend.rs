@@ -20,15 +20,18 @@ pub trait Messenger {
     fn gen_send(&mut self, identifiers: &[Ident]) -> TokenStream;
     fn gen_recv(&mut self, identifiers: &[Ident]) -> TokenStream;
     fn gen_finish(&mut self) -> TokenStream;
+
+    fn gen_sender_clone(&self) -> TokenStream;
+    fn gen_receiver_clone(&self) -> TokenStream;
 }
 
-pub struct ChannelMessenger {
+pub struct CrossbeamMessenger {
     id: u32,
     sender: Option<Ident>,
     receiver: Option<Ident>,
 }
 
-impl ChannelMessenger {
+impl CrossbeamMessenger {
     pub fn new() -> Self {
         Self {
             id: 0,
@@ -38,7 +41,7 @@ impl ChannelMessenger {
     }
 }
 
-impl Messenger for ChannelMessenger {
+impl Messenger for CrossbeamMessenger {
     fn gen_prep(&mut self) -> TokenStream {
         if self.sender.is_some() || self.receiver.is_some() {
             panic!("ChannelMessenger has already been prepared");
@@ -49,7 +52,7 @@ impl Messenger for ChannelMessenger {
         let receiver = format!("channel_messenger_receiver_{}", self.id);
         let receiver = Ident::new(&receiver, Span::call_site());
         let tokens = quote! {
-            let ((#sender, #receiver)) = std::sync::mpsc::channel();
+            let ((#sender, #receiver)) = crossbeam_channel::unbounded();
         };
 
         self.id += 1;
@@ -86,5 +89,22 @@ impl Messenger for ChannelMessenger {
         self.sender = None;
         self.receiver = None;
         quote! {}
+    }
+
+    fn gen_sender_clone(&self) -> TokenStream {
+        if self.sender.is_none() {
+            panic!("call `gen_prep` before `gen_clone_sender`")
+        }
+
+        let sender = self.sender.as_ref().unwrap();
+        quote! {let #sender = #sender.clone();}
+    }
+
+    fn gen_receiver_clone(&self) -> TokenStream {
+        if self.sender.is_none() {
+            panic!("call `gen_prep` before `gen_clone_receiver`")
+        }
+        let receiver = &self.receiver.as_ref().unwrap();
+        quote! {let #receiver = #receiver.clone();}
     }
 }
