@@ -28,11 +28,10 @@ fn gen_replicate(replicate: &Option<NonZeroU32>) -> TokenStream {
 }
 
 fn spar_code_top_level(attrs: &SparAttrs) -> TokenStream {
-    let mut code = TokenStream::new();
-
-    // Set spar_num_workers according to the envvar SPAR_NUM_WORKERS
-    // If it doesn't exist, OR it is invalid, we simply set it to NONE
-    code.extend(quote! {
+    let input = &attrs.input;
+    quote! {
+        // Set spar_num_workers according to the envvar SPAR_NUM_WORKERS
+        // If it doesn't exist, OR it is invalid, we simply set it to NONE
         let spar_num_workers: Option<u32> = match std::env::var("SPAR_NUM_WORKERS") {
             Ok(var) => match var.parse() {
                 Ok(value) => if value < 1 {
@@ -48,17 +47,10 @@ fn spar_code_top_level(attrs: &SparAttrs) -> TokenStream {
             }
             Err(_) => None
         };
-    });
-
-    // Set inputs to their respective names
-    // This assures we will move any necessary variable into the spar_stream, if it is necessary
-    for identifier in &attrs.input {
-        code.extend(quote! {
-            let #identifier = #identifier;
-        })
+        // Set inputs to their respective names
+        // This assures we will move any necessary variable into the spar_stream, if it is necessary
+        #(let #input = #input;)*
     }
-
-    code
 }
 
 fn gen_stage<M: Messenger>(attrs: &SparAttrs, messenger: &mut M, code: TokenStream) -> TokenStream {
@@ -172,10 +164,7 @@ pub fn codegen(spar_stream: SparStream, code: proc_macro::TokenStream) -> TokenS
 
     //Make the stream return a tuple with its 'OUTPUT'
     let mut code = code_stack.pop().unwrap();
-    let outputs = attrs.output;
-    code.extend(quote!{
-        ( #( #outputs),* )
-    });
+    code.extend(crate::backend::make_tuple(&attrs.output));
     TokenTree::Group(Group::new(Delimiter::Brace, code)).into_token_stream()
 }
 

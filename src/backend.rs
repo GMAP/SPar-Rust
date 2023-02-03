@@ -1,18 +1,10 @@
-use proc_macro2::{Delimiter, Group, Ident, Punct, Span, TokenStream};
-use quote::{quote, ToTokens};
+use proc_macro2::{Ident, Span, TokenStream};
+use quote::quote;
 
 pub fn make_tuple(identifiers: &[Ident]) -> TokenStream {
-    let mut tuple = TokenStream::new();
-    let mut ident_n = identifiers.len();
-    for ident in identifiers {
-        ident_n -= 1;
-        tuple.extend(ident.to_token_stream());
-        if ident_n > 0 {
-            tuple.extend(Punct::new(',', proc_macro2::Spacing::Alone).to_token_stream());
-        }
+    quote!{ 
+        ( #( #identifiers),* )
     }
-
-    Group::new(Delimiter::Parenthesis, tuple).to_token_stream()
 }
 
 pub trait Messenger {
