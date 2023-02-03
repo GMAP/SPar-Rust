@@ -3,10 +3,7 @@ From Dalvan's thesis:
 		Only if it is empty, we use SPAR_NUM_WORKERS
 	* if replicate is not present, we always use 1
 
-Fix syntax testing (maybe use a cargo build script?)
-
-Organize repository with workspaces, and proper testing
-	use quote to generate token streams we can use for testing
+we can use quote to generate token streams we can use for testing
 
 Code generation
 	basic stream analysis (based on Dalvan's thesis)
