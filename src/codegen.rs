@@ -58,13 +58,6 @@ fn spar_code_top_level(attrs: &SparAttrs) -> TokenStream {
         })
     }
 
-    // Create output variables
-    //for identifier in &attrs.output {
-    //    code.extend(quote! {
-    //        let #identifier;
-    //    })
-    //}
-
     code
 }
 
@@ -177,7 +170,13 @@ pub fn codegen(spar_stream: SparStream, code: proc_macro::TokenStream) -> TokenS
         }
     }
 
-    TokenTree::Group(Group::new(Delimiter::Brace, code_stack.pop().unwrap())).into_token_stream()
+    //Make the stream return a tuple with its 'OUTPUT'
+    let mut code = code_stack.pop().unwrap();
+    let outputs = attrs.output;
+    code.extend(quote!{
+        ( #( #outputs),* )
+    });
+    TokenTree::Group(Group::new(Delimiter::Brace, code)).into_token_stream()
 }
 
 //TODO: test the code generation, once we figure it out
