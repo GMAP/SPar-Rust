@@ -1,0 +1,7 @@
+error: there must be block of code `{...}` in SPAR's arguments
+ --> tests/syntax/incorrect_syntax/no_code_block.rs:5:5
+  |
+5 |     to_stream!();
+  |     ^^^^^^^^^^^^
+  |
+  = note: this error originates in the macro `to_stream` (in Nightly builds, run with -Z macro-backtrace for more info)

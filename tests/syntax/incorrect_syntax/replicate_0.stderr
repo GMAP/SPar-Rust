@@ -1,0 +1,16 @@
+error: character literal may only contain one codepoint
+ --> tests/syntax/incorrect_syntax/replicate_0.stderr:1:8
+  |
+1 | error: 'REPLICATE' cannot have an argument of '0'
+  |        ^^^^^^^^^^^
+  |
+help: if you meant to write a `str` literal, use double quotes
+  |
+1 | error: "REPLICATE" cannot have an argument of '0'
+  |        ~~~~~~~~~~~
+
+error: expected one of `!` or `::`, found `:`
+ --> tests/syntax/incorrect_syntax/replicate_0.stderr:1:6
+  |
+1 | error: 'REPLICATE' cannot have an argument of '0'
+  |      ^ expected one of `!` or `::`

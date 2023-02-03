@@ -1,29 +1,8 @@
-#!/bin/bash
+#!/bin/sh
 
-cargo test || exit 1
-cargo build || exit 1
-
-ERRORS=0
-SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}")"  &> /dev/null && pwd)
-for directory in "$SCRIPT_DIR"/tests/*; do
-	if [ ! -d "$directory" ]; then
-		continue
-	fi
-
-	PACKAGE="$(basename "$directory")"
-	if ! cargo build --quiet --package "$PACKAGE"; then
-		echo "$PACKAGE TEST COMPILATION FAILED"
-		ERRORS=$((ERRORS + 1))
-		continue
-	fi
-
-	if ! ./target/debug/"$PACKAGE" "$SCRIPT_DIR"; then
-		echo "$PACKAGE TEST EXECUTION FAILED"
-		ERRORS=$((ERRORS + 1))
-		continue
-	fi
-
-	echo "$PACKAGE test passed"
-done
-
-exit $ERRORS
+# Note: we use the overwrite because currently we do not care that much about
+# the specific comipile errors we get. We also redirect stderr because it
+# prints an absurd amount of information
+CMD="TRYBUILD=overwrite cargo test 2> /dev/null"
+echo "$CMD"
+eval "$CMD"

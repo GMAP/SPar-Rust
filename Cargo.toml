@@ -14,5 +14,8 @@ quote = "1.0"
 
 rust-spp = { git = "https://github.com/GMAP/rust-ssp", rev = "refs/pull/2/head" }
 
+[dev-dependencies]
+trybuild = "1.0"
+
 [workspace]
-members = [ "tests/syntax", "tests/semantics" ]
+members = []
