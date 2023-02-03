@@ -72,9 +72,9 @@ fn skip_parenthesis(cursor: Cursor) -> Result<(Cursor, Cursor)> {
         None => {
             let msg = match cursor.token_tree() {
                 Some((tt, _)) => {
-                    std::format!("expected arguments, in parenthesis `()`, found: {tt}")
+                    std::format!("expected arguments, in parenthesis '()', found: {tt}")
                 }
-                None => "expected arguments, in parenthesis `()`, found: nothing".to_owned(),
+                None => "expected arguments, in parenthesis '()', found: nothing".to_owned(),
             };
             Err(syn::Error::new(cursor.span(), msg))
         }
@@ -132,7 +132,7 @@ fn parse_replicate(cursor: Cursor) -> Result<(NonZeroU32, Cursor)> {
     Err(syn::Error::new(
         cursor.span(),
         "failed to parse REPLICATE attribute.
-                        Correct syntax is: `REPLICATE = N`, where is in either a
+                        Correct syntax is: 'REPLICATE = N', where is in either a
                         number or an identifier",
     ))
 }
@@ -143,8 +143,6 @@ fn parse_spar_args(cursor: Cursor) -> Result<(SparAttrs, Cursor, Cursor)> {
     let mut input: Vec<Ident> = Vec::new();
     let mut output: Vec<Ident> = Vec::new();
     let mut replicate: Option<NonZeroU32> = None;
-    let mut block_cursor = cursor;
-    let mut has_code = false;
 
     let mut rest = args;
     while let Some((token_tree, next)) = rest.token_tree() {
@@ -202,15 +200,17 @@ fn parse_spar_args(cursor: Cursor) -> Result<(SparAttrs, Cursor, Cursor)> {
 
             TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => {
                 let (group_cursor, _, next) = rest.group(group.delimiter()).unwrap();
-                if has_code {
+                if next.token_tree().is_some() {
                     return Err(syn::Error::new(
-                        rest.span(),
-                        "SPAR arguments cannot contain multiple code blocks",
+                        next.span(),
+                        "unexpected token after code block",
                     ));
                 }
-                block_cursor = group_cursor;
-                has_code = true;
-                rest = next;
+                return Ok((
+                    SparAttrs::new(input, output, replicate),
+                    after,
+                    group_cursor,
+                ));
             }
 
             _ => {
@@ -220,17 +220,9 @@ fn parse_spar_args(cursor: Cursor) -> Result<(SparAttrs, Cursor, Cursor)> {
         }
     }
 
-    if !has_code {
-        return Err(syn::Error::new(
-            rest.span(),
-            "there must be block of code `{...}` in SPAR's arguments",
-        ));
-    }
-
-    Ok((
-        SparAttrs::new(input, output, replicate),
-        after,
-        block_cursor,
+    Err(syn::Error::new(
+        rest.span(),
+        "expected a '{...}' code block",
     ))
 }
 
