@@ -49,7 +49,7 @@ fn spar_code_top_level(attrs: &SparAttrs) -> TokenStream {
         };
         // Set inputs to their respective names
         // This assures we will move any necessary variable into the spar_stream, if it is necessary
-        #(let #input = #input;)*
+        #(let mut #input = #input;)*
     }
 }
 
@@ -91,7 +91,7 @@ fn gen_stage<M: Messenger>(attrs: &SparAttrs, messenger: &mut M, code: TokenStre
             #sender_clone
             std::thread::Builder::new()
                 .name("SPar worker".to_string())
-                .spawn(move || {
+                .spawn_scoped(spar_scope, move || {
                     #worker_code
                 })
                 .expect("Failed to spawn SPar worker");
@@ -165,7 +165,11 @@ pub fn codegen(spar_stream: SparStream, code: proc_macro::TokenStream) -> TokenS
     //Make the stream return a tuple with its 'OUTPUT'
     let mut code = code_stack.pop().unwrap();
     code.extend(crate::backend::make_tuple(&attrs.output));
-    TokenTree::Group(Group::new(Delimiter::Brace, code)).into_token_stream()
+    quote! {
+            std::thread::scope(|spar_scope| {
+                #code
+            })
+    }
 }
 
 //TODO: test the code generation, once we figure it out

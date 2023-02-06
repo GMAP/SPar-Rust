@@ -6,9 +6,8 @@ From Dalvan's thesis:
 we can use quote to generate token streams we can use for testing
 
 Code generation
-	make spar wait for every thread to finish before returning
 	basic stream analysis (based on Dalvan's thesis)
-	generate the actual code
+	Change the code generation to create independent structs
 
 MAYBE:
 Add type information to Ident (user must write them)
