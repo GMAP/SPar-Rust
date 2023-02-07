@@ -10,8 +10,8 @@ fn main() -> Result<(), String> {
     let vec_slice = &mut vec[0..];
     let mut other_vec = Vec::new();
     to_stream!(INPUT(vec_slice), {
-        for i in 1..10 {
-            let split = vec_slice.split_at_mut(i * 10000);
+        for _ in 0..9 {
+            let split = vec_slice.split_at_mut(10000);
             vec_slice = split.1;
             let input = split.0;
             STAGE(INPUT(input), OUTPUT(output), REPLICATE = 9 {
@@ -23,11 +23,13 @@ fn main() -> Result<(), String> {
     });
 
     assert_eq!(other_vec.len(), 9);
+    let mut counter = 0;
     let mut cur = 0;
     for vec in other_vec {
         for i in vec {
-            assert!(cur <= *i);
+            assert!(cur <= *i, "cur: {cur}, i: {i}, at index: {counter}");
             cur = *i;
+            counter += 1;
         }
     }
 

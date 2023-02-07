@@ -61,7 +61,12 @@ impl Collector for CrossbeamCollector {
     fn collect(&mut self) -> TokenStream {
         let tuple = make_tuple(&self.identifiers);
         let collector = &self.collector;
-        quote! { let #tuple = #collector.recv().unwrap(); }
+        quote! {
+            let #tuple = match #collector.recv() {
+                Ok(v) => v,
+                Err(_) => return,
+            };
+        }
     }
 }
 

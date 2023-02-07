@@ -175,9 +175,9 @@ pub fn codegen(spar_stream: SparStream, code: proc_macro::TokenStream) -> TokenS
     let mut code = code_stack.pop().unwrap();
     code.extend(crate::backend::make_tuple(&attrs.output));
     quote! {
-            std::thread::scope(|spar_scope| {
-                #code
-            })
+        std::thread::scope(|spar_scope| {
+            #code
+        })
     }
 }
 
