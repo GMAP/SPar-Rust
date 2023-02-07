@@ -2,101 +2,128 @@ use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
 
 pub fn make_tuple(identifiers: &[Ident]) -> TokenStream {
-    quote!{ 
+    quote! {
         ( #( #identifiers),* )
     }
 }
 
-pub trait Messenger {
-    fn gen_prep(&mut self) -> TokenStream;
-    fn gen_send(&mut self, identifiers: &[Ident]) -> TokenStream;
-    fn gen_recv(&mut self, identifiers: &[Ident]) -> TokenStream;
-    fn gen_finish(&mut self) -> TokenStream;
+pub trait Emitter {
+    fn gen_clone(&mut self) -> TokenStream;
+    fn emit(&mut self) -> TokenStream;
+}
 
-    fn gen_sender_clone(&self) -> TokenStream;
-    fn gen_receiver_clone(&self) -> TokenStream;
+pub trait Collector {
+    fn gen_clone(&mut self) -> TokenStream;
+    fn collect(&mut self) -> TokenStream;
+}
+
+pub trait Messenger<E, C>
+where
+    E: Emitter,
+    C: Collector,
+{
+    fn prepare(&mut self) -> TokenStream;
+
+    fn channel(&mut self, identifiers: &[Ident]) -> (E, C);
+
+    fn finish(&mut self) -> TokenStream;
+}
+
+pub struct CrossbeamEmitter {
+    identifiers: Vec<Ident>,
+    emitter: Ident,
+}
+
+impl Emitter for CrossbeamEmitter {
+    fn gen_clone(&mut self) -> TokenStream {
+        let emitter = &self.emitter;
+        quote! {let #emitter = #emitter.clone();}
+    }
+
+    fn emit(&mut self) -> TokenStream {
+        let tuple = make_tuple(&self.identifiers);
+        let emitter = &self.emitter;
+        quote! { let _ = #emitter.send(#tuple); }
+    }
+}
+
+pub struct CrossbeamCollector {
+    identifiers: Vec<Ident>,
+    collector: Ident,
+}
+
+impl Collector for CrossbeamCollector {
+    fn gen_clone(&mut self) -> TokenStream {
+        let collector = &self.collector;
+        quote! {let #collector = #collector.clone();}
+    }
+
+    fn collect(&mut self) -> TokenStream {
+        let tuple = make_tuple(&self.identifiers);
+        let collector = &self.collector;
+        quote! { let #tuple = #collector.recv().unwrap(); }
+    }
 }
 
 pub struct CrossbeamMessenger {
     id: u32,
-    sender: Option<Ident>,
-    receiver: Option<Ident>,
+    emitter: Option<Ident>,
+    collector: Option<Ident>,
 }
 
 impl CrossbeamMessenger {
     pub fn new() -> Self {
         Self {
             id: 0,
-            sender: None,
-            receiver: None,
+            emitter: None,
+            collector: None,
         }
     }
 }
 
-impl Messenger for CrossbeamMessenger {
-    fn gen_prep(&mut self) -> TokenStream {
-        if self.sender.is_some() || self.receiver.is_some() {
+impl Messenger<CrossbeamEmitter, CrossbeamCollector> for CrossbeamMessenger {
+    fn prepare(&mut self) -> TokenStream {
+        if self.emitter.is_some() || self.collector.is_some() {
             panic!("ChannelMessenger has already been prepared");
         }
 
-        let sender = format!("channel_messenger_sender_{}", self.id);
-        let sender = Ident::new(&sender, Span::call_site());
-        let receiver = format!("channel_messenger_receiver_{}", self.id);
-        let receiver = Ident::new(&receiver, Span::call_site());
+        let emitter = format!("channel_messenger_sender_{}", self.id);
+        let emitter = Ident::new(&emitter, Span::call_site());
+        let collector = format!("channel_messenger_receiver_{}", self.id);
+        let collector = Ident::new(&collector, Span::call_site());
         let tokens = quote! {
-            let ((#sender, #receiver)) = crossbeam_channel::unbounded();
+            let ((#emitter, #collector)) = crossbeam_channel::unbounded();
         };
 
         self.id += 1;
-        self.sender = Some(sender);
-        self.receiver = Some(receiver);
+        self.emitter = Some(emitter);
+        self.collector = Some(collector);
         tokens
     }
 
-    fn gen_send(&mut self, identifiers: &[Ident]) -> TokenStream {
-        let tuple = make_tuple(identifiers);
-        let sender = self
-            .sender
-            .as_ref()
-            .expect("call `gen_prep` before `gen_send`");
-
-        quote! {
-            #sender.send(#tuple).unwrap();
+    fn channel(&mut self, identifiers: &[Ident]) -> (CrossbeamEmitter, CrossbeamCollector) {
+        if self.emitter.is_none() || self.collector.is_none() {
+            panic!("ChannelMessenger must be prepared first!")
         }
+        let emitter = self.emitter.as_ref().unwrap();
+        let collector = self.collector.as_ref().unwrap();
+
+        (
+            CrossbeamEmitter {
+                emitter: emitter.clone(),
+                identifiers: identifiers.to_vec(),
+            },
+            CrossbeamCollector {
+                collector: collector.clone(),
+                identifiers: identifiers.to_vec(),
+            },
+        )
     }
 
-    fn gen_recv(&mut self, identifiers: &[Ident]) -> TokenStream {
-        let tuple = make_tuple(identifiers);
-        let receiver = self
-            .receiver
-            .as_ref()
-            .expect("call `gen_prep` before `gen_recv`");
+    fn finish(&mut self) -> TokenStream {
+        self.emitter = None;
+        self.collector = None;
 
-        quote! {
-            let (#tuple) = #receiver.recv().unwrap();
-        }
-    }
-
-    fn gen_finish(&mut self) -> TokenStream {
-        self.sender = None;
-        self.receiver = None;
         quote! {}
-    }
-
-    fn gen_sender_clone(&self) -> TokenStream {
-        if self.sender.is_none() {
-            panic!("call `gen_prep` before `gen_clone_sender`")
-        }
-
-        let sender = self.sender.as_ref().unwrap();
-        quote! {let #sender = #sender.clone();}
-    }
-
-    fn gen_receiver_clone(&self) -> TokenStream {
-        if self.sender.is_none() {
-            panic!("call `gen_prep` before `gen_clone_receiver`")
-        }
-        let receiver = &self.receiver.as_ref().unwrap();
-        quote! {let #receiver = #receiver.clone();}
     }
 }

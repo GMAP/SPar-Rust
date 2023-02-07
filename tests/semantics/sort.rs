@@ -23,8 +23,8 @@ fn main() -> Result<(), String> {
     });
 
     assert_eq!(other_vec.len(), 9);
+    let mut cur = 0;
     for vec in other_vec {
-        let mut cur = 0;
         for i in vec {
             assert!(cur <= *i);
             cur = *i;

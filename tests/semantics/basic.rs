@@ -4,7 +4,8 @@ use spar_rust::to_stream;
 fn main() -> Result<(), String> {
     let a = 1;
 
-    let output = to_stream!(INPUT(a), OUTPUT(b), {
+    let out = &mut 0;
+    to_stream!(INPUT(a), {
         STAGE(INPUT(a), OUTPUT(b), {
             let mut a = a;
             for _ in 0..10 {
@@ -12,9 +13,9 @@ fn main() -> Result<(), String> {
             }
             let b = a;
         });
-        println!("b: {b}");
+        *out = b;
     });
 
-    assert_eq!(output, a + 10);
+    assert_eq!(*out, a + 10);
     Ok(())
 }

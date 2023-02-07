@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
 
 use crate::{
-    backend::{CrossbeamMessenger, Messenger},
+    backend::{self, CrossbeamMessenger},
     spar_stream::{SparAttrs, SparStream},
 };
 use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
@@ -53,7 +53,12 @@ fn spar_code_top_level(attrs: &SparAttrs) -> TokenStream {
     }
 }
 
-fn gen_stage<M: Messenger>(attrs: &SparAttrs, messenger: &mut M, code: TokenStream) -> TokenStream {
+fn gen_stage<E, C, M>(attrs: &SparAttrs, messenger: &mut M, code: TokenStream) -> TokenStream
+where
+    E: backend::Emitter,
+    C: backend::Collector,
+    M: backend::Messenger<E, C>,
+{
     let mut pre_worker_code = TokenStream::new();
     let mut worker_code = TokenStream::new();
     let mut post_worker_code = TokenStream::new();
@@ -65,23 +70,27 @@ fn gen_stage<M: Messenger>(attrs: &SparAttrs, messenger: &mut M, code: TokenStre
     worker_code.extend(quote!(println!("replicate: {:?}", #replicate);));
 
     if !attrs.input.is_empty() {
-        pre_worker_code.extend(messenger.gen_prep());
-        pre_worker_code.extend(messenger.gen_send(&attrs.input));
-        worker_code.extend(messenger.gen_recv(&attrs.input));
-        receiver_clone = messenger.gen_receiver_clone();
+        pre_worker_code.extend(messenger.prepare());
+        let (mut emitter, mut collector) = messenger.channel(&attrs.input);
+        pre_worker_code.extend(emitter.emit());
 
-        post_worker_code.extend(messenger.gen_finish());
+        receiver_clone = collector.gen_clone();
+        worker_code.extend(collector.collect());
+
+        post_worker_code.extend(messenger.finish());
     }
 
     worker_code.extend(code);
 
     if !attrs.output.is_empty() {
-        pre_worker_code.extend(messenger.gen_prep());
-        worker_code.extend(messenger.gen_send(&attrs.output));
-        post_worker_code.extend(messenger.gen_recv(&attrs.output));
-        sender_clone = messenger.gen_sender_clone();
+        pre_worker_code.extend(messenger.prepare());
+        let (mut emitter, mut collector) = messenger.channel(&attrs.output);
 
-        post_worker_code.extend(messenger.gen_finish());
+        sender_clone = emitter.gen_clone();
+        worker_code.extend(emitter.emit());
+        post_worker_code.extend(collector.collect());
+
+        post_worker_code.extend(messenger.finish());
     }
 
     quote! {
