@@ -47,6 +47,10 @@ fn spar_code_top_level(attrs: &SparAttrs) -> TokenStream {
             }
             Err(_) => None
         };
+
+        // variable to tag packages
+        let mut spar_tag: u64 = 0;
+
         // Set inputs to their respective names
         // This assures we will move any necessary variable into the spar_stream, if it is necessary
         #(let mut #input = #input;)*

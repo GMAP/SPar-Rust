@@ -7,6 +7,12 @@ pub fn make_tuple(identifiers: &[Ident]) -> TokenStream {
     }
 }
 
+pub fn make_tagged_tuple(identifiers: &[Ident]) -> TokenStream {
+    let mut tagged_identifiers = vec![Ident::new("spar_tag", Span::call_site())];
+    tagged_identifiers.extend_from_slice(identifiers);
+    make_tuple(&tagged_identifiers)
+}
+
 pub trait Emitter {
     fn gen_clone(&mut self) -> TokenStream;
     fn emit(&mut self) -> TokenStream;
@@ -15,6 +21,7 @@ pub trait Emitter {
 pub trait Collector {
     fn gen_clone(&mut self) -> TokenStream;
     fn collect(&mut self) -> TokenStream;
+    fn collect_ordered(&mut self) -> TokenStream;
 }
 
 pub trait Messenger<E, C>
@@ -29,6 +36,17 @@ where
     fn finish(&mut self) -> TokenStream;
 }
 
+pub trait Backend<E, C, M>
+where
+    E: Emitter,
+    C: Collector,
+    M: Messenger<E, C>
+{
+    fn get_messenger(&mut self) -> &mut M;
+    fn gen_replicated(&mut self, replicate: TokenStream, code: TokenStream) -> TokenStream;
+    fn gen_tag(&mut self) -> TokenStream;
+}
+
 pub struct CrossbeamEmitter {
     identifiers: Vec<Ident>,
     emitter: Ident,
@@ -41,7 +59,10 @@ impl Emitter for CrossbeamEmitter {
     }
 
     fn emit(&mut self) -> TokenStream {
-        let tuple = make_tuple(&self.identifiers);
+        if self.identifiers.is_empty() {
+            return TokenStream::new();
+        }
+        let tuple = make_tagged_tuple(&self.identifiers);
         let emitter = &self.emitter;
         quote! { let _ = #emitter.send(#tuple); }
     }
@@ -59,8 +80,26 @@ impl Collector for CrossbeamCollector {
     }
 
     fn collect(&mut self) -> TokenStream {
-        let tuple = make_tuple(&self.identifiers);
+        if self.identifiers.is_empty() {
+            return TokenStream::new();
+        }
+        let tuple = make_tagged_tuple(&self.identifiers);
         let collector = &self.collector;
+        quote! {
+            let #tuple = match #collector.recv() {
+                Ok(v) => v,
+                Err(_) => return,
+            };
+        }
+    }
+
+    fn collect_ordered(&mut self) -> TokenStream {
+        if self.identifiers.is_empty() {
+            return TokenStream::new();
+        }
+        let tuple = make_tagged_tuple(&self.identifiers);
+        let collector = &self.collector;
+        //TODO: implement ordering
         quote! {
             let #tuple = match #collector.recv() {
                 Ok(v) => v,
