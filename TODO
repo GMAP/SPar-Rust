@@ -9,6 +9,4 @@ Code generation
 	basic stream analysis (based on Dalvan's thesis)
 	Change the code generation to create independent structs
 
-MAYBE:
-Add type information to Ident (user must write them)
-	Ex: INPUT(a: u32, b: String)
+Type information is only accepting a single Ident for now
