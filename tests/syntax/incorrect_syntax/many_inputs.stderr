@@ -1,5 +1,17 @@
-error: multiple INPUTs aren't allowed
- --> tests/syntax/incorrect_syntax/many_inputs.rs:6:26
+error: prefix `aren` is unknown
+ --> tests/syntax/incorrect_syntax/many_inputs.stderr:1:24
   |
-6 |     to_stream!(INPUT(a), INPUT(a), {});
-  |                          ^^^^^
+1 | error: multiple INPUTs aren't allowed
+  |                        ^^^^ unknown prefix
+  |
+  = note: prefixed identifiers and literals are reserved since Rust 2021
+help: consider inserting whitespace here
+  |
+1 | error: multiple INPUTs aren 't allowed
+  |                            +
+
+error: expected one of `!` or `::`, found `:`
+ --> tests/syntax/incorrect_syntax/many_inputs.stderr:1:6
+  |
+1 | error: multiple INPUTs aren't allowed
+  |      ^ expected one of `!` or `::`

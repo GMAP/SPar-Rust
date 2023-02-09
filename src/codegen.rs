@@ -2,9 +2,9 @@ use std::num::NonZeroU32;
 
 use crate::{
     backend::{self, CrossbeamMessenger},
-    spar_stream::{SparAttrs, SparStream},
+    spar_stream::{SparAttrs, SparStream, SparVar},
 };
-use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
+use proc_macro2::{Delimiter, Group, TokenStream, TokenTree, Ident};
 use quote::{quote, ToTokens};
 use syn::buffer::{Cursor, TokenBuffer};
 
@@ -28,8 +28,7 @@ fn gen_replicate(replicate: &Option<NonZeroU32>) -> TokenStream {
 }
 
 fn spar_code_top_level(attrs: &SparAttrs) -> TokenStream {
-    let input = &attrs.input;
-    quote! {
+    let mut tokens = quote! {
         // Set spar_num_workers according to the envvar SPAR_NUM_WORKERS
         // If it doesn't exist, OR it is invalid, we simply set it to NONE
         let spar_num_workers: Option<u32> = match std::env::var("SPAR_NUM_WORKERS") {
@@ -50,11 +49,18 @@ fn spar_code_top_level(attrs: &SparAttrs) -> TokenStream {
 
         // variable to tag packages
         let mut spar_tag: u64 = 0;
+    };
 
-        // Set inputs to their respective names
-        // This assures we will move any necessary variable into the spar_stream, if it is necessary
-        #(let mut #input = #input;)*
+    // Set inputs to their respective names
+    // This assures we will move any necessary variable into the spar_stream, if it is necessary
+    for var in &attrs.input {
+        let SparVar {
+            identifier,
+            var_type,
+        } = var;
+        tokens.extend(quote! { let mut #identifier: #var_type = #identifier; });
     }
+    tokens
 }
 
 fn gen_stage<E, C, M>(attrs: &SparAttrs, messenger: &mut M, code: TokenStream) -> TokenStream
@@ -75,7 +81,8 @@ where
 
     if !attrs.input.is_empty() {
         pre_worker_code.extend(messenger.prepare());
-        let (mut emitter, mut collector) = messenger.channel(&attrs.input);
+        let input: Vec<Ident> = attrs.input.iter().map(|s| s.identifier.to_owned()).collect();
+        let (mut emitter, mut collector) = messenger.channel(&input);
         pre_worker_code.extend(emitter.emit());
 
         receiver_clone = collector.gen_clone();
@@ -88,7 +95,8 @@ where
 
     if !attrs.output.is_empty() {
         pre_worker_code.extend(messenger.prepare());
-        let (mut emitter, mut collector) = messenger.channel(&attrs.output);
+        let output: Vec<Ident> = attrs.output.iter().map(|s| s.identifier.to_owned()).collect();
+        let (mut emitter, mut collector) = messenger.channel(&output);
 
         sender_clone = emitter.gen_clone();
         worker_code.extend(emitter.emit());
@@ -177,7 +185,8 @@ pub fn codegen(spar_stream: SparStream, code: proc_macro::TokenStream) -> TokenS
 
     //Make the stream return a tuple with its 'OUTPUT'
     let mut code = code_stack.pop().unwrap();
-    code.extend(crate::backend::make_tuple(&attrs.output));
+    let output: Vec<Ident> = attrs.output.iter().map(|s| s.identifier.to_owned()).collect();
+    code.extend(crate::backend::make_tuple(&output));
     quote! {
         std::thread::scope(|spar_scope| {
             #code
