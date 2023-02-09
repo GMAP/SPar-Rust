@@ -14,7 +14,7 @@ fn main() -> Result<(), String> {
             let split = vec_slice.split_at_mut(10000);
             vec_slice = split.1;
             let input = split.0;
-            STAGE(INPUT(input), OUTPUT(output), REPLICATE = 9 {
+            STAGE(INPUT(input), OUTPUT(output), REPLICATE = 9, {
                 input.sort();
                 let output = input;
             });

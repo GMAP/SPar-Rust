@@ -137,6 +137,21 @@ fn parse_replicate(cursor: Cursor) -> Result<(NonZeroU32, Cursor)> {
     ))
 }
 
+fn skip_comma(cursor: Cursor) -> Result<Cursor> {
+    if let Some((token_tree, next)) = cursor.token_tree() {
+        if let TokenTree::Punct(punct) = token_tree {
+            if punct.as_char() == ',' {
+                return Ok(next);
+            }
+        }
+        return Err(syn::Error::new(
+            next.span(),
+            "expected ',', found {token_tree}",
+        ));
+    }
+    Err(syn::Error::new(cursor.span(), "expected ',', found EOF"))
+}
+
 fn parse_spar_args(cursor: Cursor) -> Result<(SparAttrs, Cursor, Cursor)> {
     let (args, after) = skip_parenthesis(cursor)?;
 
@@ -160,7 +175,7 @@ fn parse_spar_args(cursor: Cursor) -> Result<(SparAttrs, Cursor, Cursor)> {
                         return Err(syn::Error::new(rest.span(), "INPUT cannot be empty"));
                     }
                     input = i;
-                    rest = next;
+                    rest = skip_comma(next)?;
                 }
                 "OUTPUT" => {
                     if !output.is_empty() {
@@ -174,7 +189,7 @@ fn parse_spar_args(cursor: Cursor) -> Result<(SparAttrs, Cursor, Cursor)> {
                         return Err(syn::Error::new(rest.span(), "OUTPUT cannot be empty"));
                     }
                     output = o;
-                    rest = next;
+                    rest = skip_comma(next)?;
                 }
                 "REPLICATE" => {
                     if replicate.is_some() {
@@ -185,7 +200,7 @@ fn parse_spar_args(cursor: Cursor) -> Result<(SparAttrs, Cursor, Cursor)> {
                     }
                     let (r, next) = parse_replicate(next)?;
                     replicate = Some(r);
-                    rest = next;
+                    rest = skip_comma(next)?;
                 }
 
                 _ => {
@@ -193,10 +208,6 @@ fn parse_spar_args(cursor: Cursor) -> Result<(SparAttrs, Cursor, Cursor)> {
                     return Err(syn::Error::new(rest.span(), msg));
                 }
             },
-
-            TokenTree::Punct(punct) if punct.as_char() == ',' => {
-                rest = next;
-            }
 
             TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => {
                 let (group_cursor, _, next) = rest.group(group.delimiter()).unwrap();
