@@ -16,7 +16,7 @@ mod kw {
     syn::custom_keyword!(REPLICATE);
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SparVar {
     pub identifier: Ident,
     pub var_type: TokenStream,
@@ -38,7 +38,7 @@ impl PartialEq for SparVar {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct SparAttrs {
     pub input: Vec<SparVar>,
     pub output: Vec<SparVar>,
@@ -88,7 +88,18 @@ impl TryFrom<&proc_macro::TokenStream> for SparStream {
                 .into(),
         );
         let (attrs, _, block) = parse_spar_args(input.begin())?;
-        let (stages, _code) = parse_spar_stages(block)?;
+        let (mut stages, code) = parse_spar_stages(block)?;
+
+        // if there is any code before the stages, it becomes the first stage:
+        if !code.is_empty() {
+            stages.insert(
+                0,
+                SparStage {
+                    attrs: attrs.clone(),
+                    code,
+                },
+            )
+        }
 
         Ok(Self { attrs, stages })
     }
