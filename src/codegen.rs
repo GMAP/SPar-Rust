@@ -1,12 +1,8 @@
 use std::num::NonZeroU32;
 
-use crate::{
-    backend::{self, CrossbeamMessenger},
-    spar_stream::{SparAttrs, SparStream, SparVar},
-};
-use proc_macro2::{Delimiter, Group, TokenStream, TokenTree, Ident};
-use quote::{quote, ToTokens};
-use syn::buffer::{Cursor, TokenBuffer};
+use crate::spar_stream::{SparAttrs, SparStream};
+use proc_macro2::TokenStream;
+use quote::quote;
 
 ///Note: replicate defaults to 1 when it is not given.
 ///If REPLICATE argument exists, then it defaults to what was written in the code
@@ -46,152 +42,17 @@ fn spar_code_top_level(attrs: &SparAttrs) -> TokenStream {
             }
             Err(_) => None
         };
-
-        // variable to tag packages
-        let mut spar_tag: u64 = 0;
     };
-
-    // Set inputs to their respective names
-    // This assures we will move any necessary variable into the spar_stream, if it is necessary
-    for var in &attrs.input {
-        let SparVar {
-            identifier,
-            var_type,
-        } = var;
-        tokens.extend(quote! { let mut #identifier: #var_type = #identifier; });
-    }
     tokens
 }
 
-fn gen_stage<E, C, M>(attrs: &SparAttrs, messenger: &mut M, code: TokenStream) -> TokenStream
-where
-    E: backend::Emitter,
-    C: backend::Collector,
-    M: backend::Messenger<E, C>,
-{
-    let mut pre_worker_code = TokenStream::new();
-    let mut worker_code = TokenStream::new();
-    let mut post_worker_code = TokenStream::new();
-
-    let mut sender_clone = TokenStream::new();
-    let mut receiver_clone = TokenStream::new();
-
-    let replicate = gen_replicate(&attrs.replicate);
-    worker_code.extend(quote!(println!("replicate: {:?}", #replicate);));
-
-    if !attrs.input.is_empty() {
-        pre_worker_code.extend(messenger.prepare());
-        let input: Vec<Ident> = attrs.input.iter().map(|s| s.identifier.to_owned()).collect();
-        let (mut emitter, mut collector) = messenger.channel(&input);
-        pre_worker_code.extend(emitter.emit());
-
-        receiver_clone = collector.gen_clone();
-        worker_code.extend(collector.collect());
-
-        post_worker_code.extend(messenger.finish());
-    }
-
-    worker_code.extend(code);
-
-    if !attrs.output.is_empty() {
-        pre_worker_code.extend(messenger.prepare());
-        let output: Vec<Ident> = attrs.output.iter().map(|s| s.identifier.to_owned()).collect();
-        let (mut emitter, mut collector) = messenger.channel(&output);
-
-        sender_clone = emitter.gen_clone();
-        worker_code.extend(emitter.emit());
-        post_worker_code.extend(collector.collect());
-
-        post_worker_code.extend(messenger.finish());
-    }
-
-    quote! {
-        #pre_worker_code
-        for _ in 0..#replicate {
-            #receiver_clone
-            #sender_clone
-            std::thread::Builder::new()
-                .name("SPar worker".to_string())
-                .spawn_scoped(spar_scope, move || {
-                    #worker_code
-                })
-                .expect("Failed to spawn SPar worker");
-        }
-        #post_worker_code
-    }
-}
-
-fn skip_attributes(cursor: Cursor) -> Cursor {
-    let mut rest = cursor;
-    while let Some((tt, next)) = rest.token_tree() {
-        if let TokenTree::Group(group) = tt {
-            if group.delimiter() == Delimiter::Brace {
-                let (group_cursor, _, _) = rest.group(group.delimiter()).unwrap();
-                rest = group_cursor;
-                break;
-            }
-        }
-        rest = next;
-    }
-    rest
-}
-
-pub fn codegen(spar_stream: SparStream, code: proc_macro::TokenStream) -> TokenStream {
+pub fn codegen(spar_stream: SparStream) -> TokenStream {
     let SparStream { attrs, mut stages } = spar_stream;
+    let mut code = TokenStream::new();
 
-    let mut messenger = CrossbeamMessenger::new();
-    let code = TokenBuffer::new(code);
-    let cursor = skip_attributes(code.begin());
-    let mut code_stack = vec![spar_code_top_level(&attrs)];
-    let mut after_groups = vec![cursor];
+    //TODO: stream analysis and code generation
 
-    while !after_groups.is_empty() {
-        let mut rest = after_groups.pop().unwrap();
-        while let Some((token_tree, next)) = rest.token_tree() {
-            match &token_tree {
-                TokenTree::Ident(ident) if *ident == "STAGE" => {
-                    let (in_group, _, after_group) = next.group(Delimiter::Parenthesis).unwrap();
-
-                    let stage = stages.remove(0);
-                    let stage_code = gen_stage(
-                        &stage.attrs,
-                        &mut messenger,
-                        skip_attributes(in_group).token_stream(),
-                    );
-                    code_stack.last_mut().unwrap().extend(stage_code);
-                    // Make sure to skip the ';'
-                    rest = after_group.token_tree().unwrap().1;
-                }
-                TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => {
-                    let (group_cursor, _, next) = rest.group(group.delimiter()).unwrap();
-                    code_stack.push(TokenStream::new());
-                    rest = group_cursor;
-                    after_groups.push(next);
-                }
-                _ => {
-                    token_tree.to_tokens(code_stack.last_mut().unwrap());
-                    rest = next;
-                }
-            }
-        }
-        if code_stack.len() > 1 {
-            let code = code_stack.pop().unwrap();
-            code_stack
-                .last_mut()
-                .unwrap()
-                .extend(TokenTree::Group(Group::new(Delimiter::Brace, code)).into_token_stream());
-        }
-    }
-
-    //Make the stream return a tuple with its 'OUTPUT'
-    let mut code = code_stack.pop().unwrap();
-    let output: Vec<Ident> = attrs.output.iter().map(|s| s.identifier.to_owned()).collect();
-    code.extend(crate::backend::make_tuple(&output));
-    quote! {
-        std::thread::scope(|spar_scope| {
-            #code
-        })
-    }
+    code
 }
 
 //TODO: test the code generation, once we figure it out
