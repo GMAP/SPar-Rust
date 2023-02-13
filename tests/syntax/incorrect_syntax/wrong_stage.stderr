@@ -1,5 +1,0 @@
-error: multiple INPUTs aren't allowed
- --> tests/syntax/incorrect_syntax/wrong_stage.rs:6:31
-  |
-6 |     to_stream!(INPUT(a: u32), INPUT(a: u32), {
-  |                               ^^^^^

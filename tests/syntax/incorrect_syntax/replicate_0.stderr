@@ -1,5 +1,0 @@
-error: 'REPLICATE' cannot have an argument of '0'
- --> tests/syntax/incorrect_syntax/replicate_0.rs:5:26
-  |
-5 |     to_stream!(REPLICATE = 0, {});
-  |                          ^

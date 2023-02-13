@@ -3,10 +3,6 @@ From Dalvan's thesis:
 		Only if it is empty, we use SPAR_NUM_WORKERS
 	* if replicate is not present, we always use 1
 
-we can use quote to generate token streams we can use for testing
-
 Code generation
 	basic stream analysis (based on Dalvan's thesis)
 	Change the code generation to create independent structs
-
-Type information is only accepting a single Ident for now

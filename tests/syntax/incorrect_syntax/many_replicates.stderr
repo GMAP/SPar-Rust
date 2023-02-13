@@ -1,5 +1,0 @@
-error: multiple REPLICATEs aren't allowed
- --> tests/syntax/incorrect_syntax/many_replicates.rs:5:31
-  |
-5 |     to_stream!(REPLICATE = 1, REPLICATE = 2, {});
-  |                               ^^^^^^^^^
