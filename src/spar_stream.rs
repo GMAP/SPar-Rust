@@ -3,7 +3,7 @@
 use std::num::NonZeroU32;
 
 use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
-use quote::ToTokens;
+use quote::{quote, ToTokens};
 use syn::{
     buffer::{Cursor, TokenBuffer},
     Ident, Result,
@@ -315,8 +315,15 @@ fn parse_spar_stages(cursor: Cursor) -> Result<(Vec<SparStage>, TokenStream)> {
     loop {
         while let Some((token_tree, next)) = rest.token_tree() {
             match &token_tree {
-                TokenTree::Ident(ident) if *ident == "STAGE" => {
+                TokenTree::Ident(ident) if ident == "STAGE" => {
                     groups.clear();
+                    if !code_stack.iter().all(|code| code.is_empty()) {
+                        code_stack
+                            .last_mut()
+                            .unwrap()
+                            .extend(quote! {__SPAR_MARKER__});
+                    }
+
                     while code_stack.len() > 1 {
                         let code = code_stack.pop().unwrap();
                         code_stack.last_mut().unwrap().extend(
@@ -455,6 +462,7 @@ mod tests {
             let mut a = 10;
             while true {
                 a += 1;
+                __SPAR_MARKER__
             }
         };
 

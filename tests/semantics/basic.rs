@@ -1,4 +1,5 @@
 extern crate spar_rust;
+extern crate rust_spp;
 use spar_rust::to_stream;
 
 fn main() -> Result<(), String> {
