@@ -1,17 +1,3 @@
-* SPAR_NUM_WORKERS vs Replicate priority
-
-Proc macros are run during the AST creation phase, prior to type analyzes.
-This means we don't have acess to type information when are generating proc
-macros' output. This makes it very difficult to work with rust-ssp, for example.
-
 Do we REALLY need the stream analysis?
 
-What happens when OUTPUT is specified in to_stream! ?
-
-for 0..10 {
-	STAGE(REPLICATE = 10 {
-
-	})
-}
-
-How many replicates does the above create? 10 or 100?
+WE NEED A COLLECTOR-REDUCE STRUCT IN RUST_SPP
