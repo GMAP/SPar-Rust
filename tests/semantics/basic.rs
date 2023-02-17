@@ -14,11 +14,12 @@ fn main() -> Result<(), String> {
             }
             let b = a;
         });
-        STAGE(INPUT(b: u32, out: u32), OUTPUT(out: u32), {
+        STAGE(INPUT(b: u32), OUTPUT(out: u32), {
             out += b;
+            out
         });
     });
 
-    assert_eq!(stream_result, 45);
+    assert_eq!(stream_result, 11);
     Ok(())
 }

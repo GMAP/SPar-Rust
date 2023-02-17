@@ -9,16 +9,16 @@ fn main() -> Result<(), String> {
 
     let vec_slice = &mut vec[0..];
     let mut other_vec = Vec::new();
-    to_stream!(INPUT(vec_slice: &mut [u32]), {
+    to_stream!(INPUT(vec_slice: &mut [u32]), OUTPUT(other_vec: Vec<u32>), {
         for _ in 0..9 {
             let split = vec_slice.split_at_mut(10000);
             vec_slice = split.1;
             let input = split.0;
-            STAGE(INPUT(input: &'a mut[u32]), OUTPUT(sorted: &[u32]), REPLICATE = 9, {
+            STAGE(INPUT(input: &mut [u32]), OUTPUT(sorted: &[u32]), REPLICATE = 9, {
                 input.sort();
                 let sorted = input;
             });
-            STAGE(INPUT(sorted: &[u32], other_vec: &mut Vec<u32>), {
+            STAGE(INPUT(sorted: &[u32]), OUTPUT(other_vec: Vec<u32> ), {
                 other_vec.push(sorted);
             });
         }
