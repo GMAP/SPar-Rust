@@ -59,11 +59,12 @@ impl SparAttrs {
 pub struct SparStage {
     pub attrs: SparAttrs,
     pub code: TokenStream,
+    pub id: u32,
 }
 
 impl SparStage {
-    pub fn new(attrs: SparAttrs, code: TokenStream) -> Self {
-        Self { attrs, code }
+    pub fn new(attrs: SparAttrs, code: TokenStream, id: u32) -> Self {
+        Self { attrs, code, id }
     }
 }
 
@@ -92,13 +93,7 @@ impl TryFrom<&proc_macro::TokenStream> for SparStream {
 
         // if there is any code before the stages, it becomes the first stage:
         if !code.is_empty() {
-            stages.insert(
-                0,
-                SparStage {
-                    attrs: attrs.clone(),
-                    code,
-                },
-            )
+            stages.insert(0, SparStage::new(attrs.clone(), code, 0))
         }
 
         Ok(Self { attrs, stages })
@@ -364,7 +359,11 @@ fn parse_spar_stages(cursor: Cursor) -> Result<(Vec<SparStage>, TokenStream)> {
         match &token_tree {
             TokenTree::Ident(ident) if *ident == "STAGE" => {
                 let (attrs, semicolon, code_cursor) = parse_spar_args(next)?;
-                stages.push(SparStage::new(attrs, code_cursor.token_stream()));
+                stages.push(SparStage::new(
+                    attrs,
+                    code_cursor.token_stream(),
+                    stages.len() as u32 + 1,
+                ));
 
                 match semicolon.token_tree() {
                     Some((token, next)) => match token {
@@ -491,7 +490,7 @@ mod tests {
         let expected_attrs = SparAttrs::new(Vec::new(), Vec::new(), None);
         assert_eq!(
             spar_stages.pop().unwrap(),
-            SparStage::new(expected_attrs, tokens)
+            SparStage::new(expected_attrs, tokens, 0)
         );
     }
 
@@ -518,7 +517,7 @@ mod tests {
         let expected_attrs = SparAttrs::new(input, output, replicate);
         assert_eq!(
             spar_stages.pop().unwrap(),
-            SparStage::new(expected_attrs, tokens)
+            SparStage::new(expected_attrs, tokens, 0)
         );
     }
 
@@ -547,7 +546,7 @@ mod tests {
         let expected_attrs = SparAttrs::new(input, output, replicate);
         assert_eq!(
             spar_stages.pop().unwrap(),
-            SparStage::new(expected_attrs, tokens)
+            SparStage::new(expected_attrs, tokens, 0)
         );
     }
 
@@ -574,7 +573,7 @@ mod tests {
         let expected_attrs = SparAttrs::new(input, output, replicate);
         assert_eq!(
             spar_stages.pop().unwrap(),
-            SparStage::new(expected_attrs, tokens)
+            SparStage::new(expected_attrs, tokens, 0)
         );
     }
 
@@ -604,7 +603,7 @@ mod tests {
         let expected_attrs = SparAttrs::new(input, output, replicate);
         assert_eq!(
             spar_stages.pop().unwrap(),
-            SparStage::new(expected_attrs, tokens)
+            SparStage::new(expected_attrs, tokens, 0)
         );
     }
 
@@ -628,7 +627,7 @@ mod tests {
         let expected_attrs = SparAttrs::new(Vec::new(), Vec::new(), NonZeroU32::new(5));
         assert_eq!(
             spar_stages.pop().unwrap(),
-            SparStage::new(expected_attrs, tokens)
+            SparStage::new(expected_attrs, tokens, 0)
         );
     }
 
@@ -649,7 +648,7 @@ mod tests {
         let expected_attrs = SparAttrs::new(Vec::new(), Vec::new(), None);
         assert_eq!(
             spar_stages.pop().unwrap(),
-            SparStage::new(expected_attrs, TokenStream::new())
+            SparStage::new(expected_attrs, TokenStream::new(), 0)
         );
 
         let input = make_vars(&["a"], &["u32"], &stage);
@@ -658,7 +657,7 @@ mod tests {
         let expected_attrs = SparAttrs::new(input, output, replicate);
         assert_eq!(
             spar_stages.pop().unwrap(),
-            SparStage::new(expected_attrs, TokenStream::new())
+            SparStage::new(expected_attrs, TokenStream::new(), 0)
         );
 
         let input = make_vars(&["c", "d"], &["u32", "u32"], &stage);
@@ -667,7 +666,7 @@ mod tests {
         let expected_attrs = SparAttrs::new(input, output, replicate);
         assert_eq!(
             spar_stages.pop().unwrap(),
-            SparStage::new(expected_attrs, TokenStream::new())
+            SparStage::new(expected_attrs, TokenStream::new(), 0)
         );
 
         let input = make_vars(&["h"], &["u32"], &stage);
@@ -676,7 +675,7 @@ mod tests {
         let expected_attrs = SparAttrs::new(input, output, replicate);
         assert_eq!(
             spar_stages.pop().unwrap(),
-            SparStage::new(expected_attrs, TokenStream::new())
+            SparStage::new(expected_attrs, TokenStream::new(), 0)
         );
     }
 

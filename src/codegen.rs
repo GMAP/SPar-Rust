@@ -66,6 +66,54 @@ impl Collector {
     }
 }
 
+struct Dispatcher {
+    code: TokenStream,
+}
+
+impl Dispatcher {
+    pub fn new(stage: &SparStage) -> (Self, Option<&SparStage>) {
+        let mut idents = Vec::new();
+
+        for input in &stage.attrs.input {
+            idents.push(input.identifier.clone())
+        }
+
+        let inputs = make_tuple(&idents);
+        let pipeline_post = quote! { spar_pipeline.post(#inputs).unwrap(); };
+
+        let mut gen = TokenStream::new();
+        let code = stage.code.clone();
+        let mut found = false;
+        for token in code.into_iter() {
+            if let TokenTree::Ident(ref ident) = token {
+                if ident == "__SPAR_MARKER__" {
+                    gen.extend(pipeline_post.clone());
+                    found = true;
+                    continue;
+                }
+            }
+            gen.extend(token.to_token_stream());
+        }
+
+        if found {
+            (Self { code: gen }, None)
+        } else {
+            (
+                Self {
+                    code: pipeline_post,
+                },
+                Some(stage),
+            )
+        }
+    }
+}
+
+impl ToTokens for Dispatcher {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        tokens.extend(self.code.clone());
+    }
+}
+
 ///Note: replicate defaults to 1 when it is not given.
 ///If REPLICATE argument exists, then it defaults to what was written in the code
 ///if SPAR_NUM_WORKERS is set, all REPLICATES are set to that value
@@ -127,11 +175,11 @@ fn get_idents_and_types_from_spar_vars(vars: &[SparVar]) -> (Vec<Ident>, Vec<Tok
     (idents, types)
 }
 
-fn rust_spp_stage_struct_gen(stage: &SparStage, stage_number: usize) -> TokenStream {
+fn rust_spp_stage_struct_gen(stage: &SparStage) -> TokenStream {
     let (in_idents, in_types) = get_idents_and_types_from_spar_vars(&stage.attrs.input);
     let (out_idents, out_types) = get_idents_and_types_from_spar_vars(&stage.attrs.output);
 
-    let struct_name = format!("SparStage{stage_number}");
+    let struct_name = format!("SparStage{}", stage.id);
     let struct_ident = Ident::new(&struct_name, Span::call_site());
     let stage_code = &stage.code;
 
@@ -186,8 +234,8 @@ fn rust_spp_gen_top_level_code(spar_stream: &SparStream) -> (Vec<TokenStream>, O
     let SparStream { stages, attrs } = spar_stream;
     let mut structs = Vec::new();
 
-    for (i, stage) in stages[0..stages.len() - 1].iter().enumerate() {
-        structs.push(rust_spp_stage_struct_gen(stage, i));
+    for stage in stages[0..stages.len() - 1].iter() {
+        structs.push(rust_spp_stage_struct_gen(stage));
     }
 
     let last_stage = stages.last().unwrap();
@@ -205,77 +253,40 @@ fn rust_spp_gen_top_level_code(spar_stream: &SparStream) -> (Vec<TokenStream>, O
         }
     }
 
-    structs.push(rust_spp_stage_struct_gen(last_stage, stages.len() - 1));
+    structs.push(rust_spp_stage_struct_gen(last_stage));
     (structs, None)
 }
 
-fn rust_spp_gen_first_stage(stage: &SparStage) -> TokenStream {
-    let mut gen = TokenStream::new();
-    let code = stage.code.clone();
-    let mut found = false;
-    for token in code.into_iter() {
-        if let TokenTree::Ident(ref ident) = token {
-            if ident == "__SPAR_MARKER__" {
-                gen.extend(rust_spp_gen_pipeline_post(&stage.attrs.input));
-                found = true;
-                continue;
-            }
-        }
-        gen.extend(token.to_token_stream());
-    }
+fn rust_spp_pipeline_arg(stage: &SparStage) -> TokenStream {
+    let SparStage { attrs, id, .. } = stage;
+    let struct_name = format!("SparStage{id}");
+    let struct_ident = Ident::new(&struct_name, Span::call_site());
 
-    if found {
-        gen
+    if attrs.replicate.is_none() {
+        quote! { rust_spp::sequential!(#struct_ident::new()) }
     } else {
-        TokenStream::new()
-    }
-}
-
-fn rust_spp_gen_pipeline_post(inputs: &[SparVar]) -> TokenStream {
-    let mut idents = Vec::new();
-
-    for input in inputs {
-        idents.push(input.identifier.clone())
-    }
-
-    let inputs = make_tuple(&idents);
-    quote! {
-        spar_pipeline.post(#inputs);
+        let replicate = gen_replicate(&attrs.replicate);
+        quote! { rust_spp::parallel!(#struct_ident::new(), #replicate) }
     }
 }
 
 fn rust_spp_gen(spar_stream: &SparStream) -> TokenStream {
     let (spar_structs, collector) = rust_spp_gen_top_level_code(spar_stream);
-    let SparStream { stages, attrs } = spar_stream;
-    let mut spar_pipeline = rust_spp_gen_pipeline_post(&attrs.input);
     let mut gen = TokenStream::new();
 
+    let (dispatcher, first_stage) = Dispatcher::new(&spar_stream.stages[0]);
+    if first_stage.is_none() {}
     let mut code = quote! {
         use rust_spp::*;
     };
-    for (i, (stage, spar_struct)) in stages.iter().zip(spar_structs).enumerate() {
+    for (stage, spar_struct) in spar_stream.stages.iter().zip(spar_structs) {
         code.extend(spar_struct);
-        if i == 0 {
-            let code = rust_spp_gen_first_stage(stage);
-            if !code.is_empty() {
-                spar_pipeline = code;
-                continue;
-            }
-        }
-        let SparStage { attrs, .. } = stage;
-        let struct_name = format!("SparStage{i}");
-        let struct_ident = Ident::new(&struct_name, Span::call_site());
 
         if !gen.is_empty() {
             gen.extend(quote!(,));
         }
 
-        if attrs.replicate.is_none() {
-            gen.extend(quote! { rust_spp::sequential!(#struct_ident::new()) });
-        } else {
-            let replicate = gen_replicate(&attrs.replicate);
-            gen.extend(quote! { rust_spp::parallel!(#struct_ident::new(), #replicate) })
-        }
+        gen.extend(rust_spp_pipeline_arg(stage));
     }
 
     code.extend(quote! {
@@ -284,7 +295,7 @@ fn rust_spp_gen(spar_stream: &SparStream) -> TokenStream {
             collect!()
         ];
 
-        #spar_pipeline
+        #dispatcher
     });
 
     if let Some(collector) = collector {
@@ -296,10 +307,7 @@ fn rust_spp_gen(spar_stream: &SparStream) -> TokenStream {
 
 pub fn codegen(spar_stream: SparStream) -> TokenStream {
     let mut code = gen_spar_num_workers();
-    dbg!(spar_stream.stages.len());
     code.extend(rust_spp_gen(&spar_stream));
-
-    //TODO: stream analysis and code generation
 
     Group::new(Delimiter::Brace, code).into_token_stream()
 }
