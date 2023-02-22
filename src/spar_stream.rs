@@ -93,7 +93,11 @@ impl TryFrom<&proc_macro::TokenStream> for SparStream {
 
         // if there is any code before the stages, it becomes the first stage:
         if !code.is_empty() {
-            stages.insert(0, SparStage::new(attrs.clone(), code, 0))
+            let mut stage = SparStage::new(attrs.clone(), code, 0);
+            if let Some(s) = stages.get(0) {
+                stage.attrs.output = s.attrs.input.clone();
+            }
+            stages.insert(0, stage)
         }
 
         Ok(Self { attrs, stages })

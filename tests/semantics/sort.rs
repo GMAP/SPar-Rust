@@ -7,30 +7,30 @@ fn main() -> Result<(), String> {
         vec.push(rand::random());
     }
 
-    let vec_slice = &mut vec[0..];
-    let mut other_vec = Vec::new();
-    to_stream!(INPUT(vec_slice: &mut [u32]), OUTPUT(other_vec: Vec<u32>), {
+    let other_vec = Vec::new();
+    let other_vec = to_stream!(INPUT(vec: Vec<u32>), OUTPUT(other_vec: Vec<Vec<u32>>), {
+        let mut vec_slice = &mut vec[0..];
         for _ in 0..9 {
             let split = vec_slice.split_at_mut(10000);
             vec_slice = split.1;
-            let input = split.0;
-            STAGE(INPUT(input: &mut [u32]), OUTPUT(sorted: &[u32]), REPLICATE = 9, {
+            let input = split.0.to_vec();
+            STAGE(INPUT(input: Vec<u32>), OUTPUT(sorted: Vec<u32>), REPLICATE = 9, {
                 input.sort();
                 let sorted = input;
             });
-            STAGE(INPUT(sorted: &[u32]), OUTPUT(other_vec: Vec<u32> ), {
+            STAGE(INPUT(sorted: Vec<u32>), OUTPUT(other_vec: Vec<Vec<u32>> ), {
                 other_vec.push(sorted);
             });
         }
     });
 
     assert_eq!(other_vec.len(), 9);
-    let mut counter = 0;
-    let mut cur = 0;
+    let mut counter: usize = 0;
+    let mut cur: u32 = 0;
     for vec in other_vec {
         for i in vec {
-            assert!(cur <= *i, "cur: {cur}, i: {i}, at index: {counter}");
-            cur = *i;
+            assert!(cur <= i, "cur: {cur}, i: {i}, at index: {counter}");
+            cur = i;
             counter += 1;
         }
     }

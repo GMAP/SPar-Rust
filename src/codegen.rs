@@ -47,19 +47,20 @@ impl Collector {
                     Self { output }
                 }
 
-                fn process(&mut self, input: #in_types, order: u64) {
+                fn process(self, input: #in_types, order: u64) -> Self {
                     let #input_tuple = input;
                     let #mut_output_tuple = self.output;
-                    self.output = {
+                    {
                         #code
                     }
+                    Self::new(#output_tuple)
                 }
             }
 
             let spar_output = spar_pipeline.collect();
             let mut spar_collector = #struct_name::new(#output_tuple);
             for (i, output) in spar_output.into_iter().enumerate() {
-                spar_collector.process(output, i as u64);
+                spar_collector = spar_collector.process(output, i as u64);
             }
             spar_collector.output
         }
@@ -97,14 +98,12 @@ impl Dispatcher {
 
     pub fn new(stage: &SparStage) -> (Self, bool) {
         let mut idents = Vec::new();
-
-        for input in &stage.attrs.input {
-            idents.push(input.identifier.clone())
+        for output in &stage.attrs.output {
+            idents.push(output.identifier.clone())
         }
+        let outputs = make_tuple(&idents);
 
-        let inputs = make_tuple(&idents);
-        let pipeline_post = quote! { spar_pipeline.post(#inputs).unwrap(); };
-
+        let pipeline_post = quote! { spar_pipeline.post(#outputs).unwrap(); };
         let mut gen = TokenStream::new();
         let mut found = false;
         for token in stage.code.clone().into_iter() {
@@ -114,9 +113,14 @@ impl Dispatcher {
         if found {
             (Self { code: gen }, true)
         } else {
+            idents.clear();
+            for input in &stage.attrs.input {
+                idents.push(input.identifier.clone())
+            }
+            let inputs = make_tuple(&idents);
             (
                 Self {
-                    code: pipeline_post,
+                    code: quote! { spar_pipeline.post(#inputs).unwrap(); },
                 },
                 false,
             )
@@ -134,14 +138,15 @@ impl ToTokens for Dispatcher {
 ///If REPLICATE argument exists, then it defaults to what was written in the code
 ///if SPAR_NUM_WORKERS is set, all REPLICATES are set to that value
 fn gen_replicate(replicate: &Option<NonZeroU32>) -> TokenStream {
+    //NOTE: this needs to be i32 in rust_spp
     match replicate {
         Some(n) => {
             let n: u32 = (*n).into();
             quote! {
                 if let Some(workers) = spar_num_workers {
-                    workers
+                    workers as i32
                 } else {
-                    #n
+                    #n as i32
                 }
             }
         }
@@ -215,7 +220,7 @@ fn rust_spp_stage_struct_gen(stage: &SparStage) -> TokenStream {
         let in_types = make_tuple(&in_types);
         let out_types = make_tuple(&out_types);
 
-        let input_tuple = make_tuple(&in_idents);
+        let input_tuple = make_mut_tuple(&in_idents);
         let output_tuple = make_tuple(&out_idents);
 
         code.extend(quote! {
@@ -229,7 +234,7 @@ fn rust_spp_stage_struct_gen(stage: &SparStage) -> TokenStream {
         });
     } else if !in_types.is_empty() {
         let in_types = make_tuple(&in_types);
-        let input_tuple = make_tuple(&in_idents);
+        let input_tuple = make_mut_tuple(&in_idents);
         code.extend(quote! {
             impl rust_spp::blocks::in_block::In<#in_types> for #struct_ident {
                 fn process(&mut self, input: #in_types, order: u64) -> () {

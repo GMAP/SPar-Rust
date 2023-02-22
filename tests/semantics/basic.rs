@@ -16,7 +16,6 @@ fn main() -> Result<(), String> {
         });
         STAGE(INPUT(b: u32), OUTPUT(out: u32), {
             out += b;
-            out
         });
     });
 
