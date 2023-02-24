@@ -2,7 +2,7 @@
 
 use std::num::NonZeroU32;
 
-use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
+use proc_macro2::{Delimiter, Group, Span, TokenStream, TokenTree};
 use quote::{quote, ToTokens};
 use syn::{
     buffer::{Cursor, TokenBuffer},
@@ -98,6 +98,21 @@ impl TryFrom<&proc_macro::TokenStream> for SparStream {
                 stage.attrs.output = s.attrs.input.clone();
             }
             stages.insert(0, stage)
+        }
+
+        if let Some(stage) = stages.last() {
+            if !stage
+                .attrs
+                .output
+                .iter()
+                .zip(&attrs.output)
+                .all(|(a, b)| a.var_type.to_string() == b.var_type.to_string())
+            {
+                return Err(syn::Error::new(
+                    Span::call_site(),
+                    "final stage output types does not match stream output types",
+                ));
+            }
         }
 
         Ok(Self { attrs, stages })
@@ -279,7 +294,7 @@ fn parse_spar_args(cursor: Cursor) -> Result<(SparAttrs, Cursor, Cursor)> {
 
             TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => {
                 let (group_cursor, _, next) = rest.group(group.delimiter()).unwrap();
-                if next.token_tree().is_some() {
+                if next.token_tree().is_some() && skip_comma(next).is_err() {
                     return Err(syn::Error::new(
                         next.span(),
                         "unexpected token after code block",

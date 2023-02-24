@@ -5,7 +5,6 @@ use spar_rust::to_stream;
 fn main() -> Result<(), String> {
     let a = 1;
 
-    let out = 0;
     let stream_result = to_stream!(INPUT(a: u32), OUTPUT(out: u32), {
         STAGE(INPUT(a: u32), OUTPUT(b: u32), {
             let mut a = a;
@@ -14,11 +13,8 @@ fn main() -> Result<(), String> {
             }
             let b = a;
         });
-        STAGE(INPUT(b: u32), OUTPUT(out: u32), {
-            out += b;
-        });
     });
 
-    assert_eq!(stream_result, 11);
+    assert_eq!(stream_result.iter().map(|i| *i).reduce(|acc, i| acc + i).unwrap(), 11);
     Ok(())
 }
