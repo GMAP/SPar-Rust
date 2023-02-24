@@ -20,6 +20,7 @@ fn main() -> Result<(), String> {
             });
             STAGE(INPUT(sorted: Vec<u32>), OUTPUT(other_vec: Vec<u32>), {
                 other_vec.extend(&sorted);
+                other_vec.sort();
             });
         }
     });

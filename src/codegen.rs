@@ -321,7 +321,7 @@ fn rust_spp_gen(spar_stream: &mut SparStream) -> TokenStream {
     code.extend(quote! {
         let spar_pipeline = rust_spp::pipeline![
             #gen,
-            collect!()
+            collect_ordered!()
         ];
 
         #dispatcher
