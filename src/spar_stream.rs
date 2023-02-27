@@ -38,15 +38,32 @@ impl PartialEq for SparVar {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum Replicate {
+    Lit(NonZeroU32),
+    Var(Ident),
+    None
+}
+
+impl Replicate {
+    pub fn is_none(&self) -> bool {
+        &Self::None == self
+    }
+
+    pub fn is_some(&self) -> bool {
+        &Self::None != self
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct SparAttrs {
     pub input: Vec<SparVar>,
     pub output: Vec<SparVar>,
-    pub replicate: Option<NonZeroU32>,
+    pub replicate: Replicate,
 }
 
 impl SparAttrs {
-    pub fn new(input: Vec<SparVar>, output: Vec<SparVar>, replicate: Option<NonZeroU32>) -> Self {
+    pub fn new(input: Vec<SparVar>, output: Vec<SparVar>, replicate: Replicate) -> Self {
         Self {
             input,
             output,
@@ -190,16 +207,16 @@ fn get_variables(cursor: Cursor) -> Result<(Vec<SparVar>, Cursor)> {
     Ok((vars, after))
 }
 
-fn parse_replicate(cursor: Cursor) -> Result<(NonZeroU32, Cursor)> {
+fn parse_replicate(cursor: Cursor) -> Result<(Replicate, Cursor)> {
     if let Some((TokenTree::Punct(punct), next)) = cursor.token_tree() {
         if punct.as_char() == '=' {
             if let Some((tt, next)) = next.token_tree() {
                 match tt {
-                    TokenTree::Ident(_i) => todo!(),
+                    TokenTree::Ident(i) => return Ok((Replicate::Var(i), next)),
                     TokenTree::Literal(lit) => {
                         if let Ok(i) = lit.to_string().parse::<u32>() {
                             if i > 0 {
-                                return Ok((NonZeroU32::new(i).unwrap(), next));
+                                return Ok((Replicate::Lit(NonZeroU32::new(i).unwrap()), next));
                             } else {
                                 return Err(syn::Error::new(
                                     cursor.span(),
@@ -240,7 +257,7 @@ fn parse_spar_args(cursor: Cursor) -> Result<(SparAttrs, Cursor, Cursor)> {
 
     let mut input: Vec<SparVar> = Vec::new();
     let mut output: Vec<SparVar> = Vec::new();
-    let mut replicate: Option<NonZeroU32> = None;
+    let mut replicate = Replicate::None;
 
     let mut rest = args;
     while let Some((token_tree, next)) = rest.token_tree() {
@@ -282,7 +299,7 @@ fn parse_spar_args(cursor: Cursor) -> Result<(SparAttrs, Cursor, Cursor)> {
                         ));
                     }
                     let (r, next) = parse_replicate(next)?;
-                    replicate = Some(r);
+                    replicate = r;
                     rest = skip_comma(next)?;
                 }
 
@@ -506,7 +523,7 @@ mod tests {
         let (mut spar_stages, _) = parse_spar_stages(TokenBuffer::new2(stage).begin()).unwrap();
         assert_eq!(spar_stages.len(), 1);
 
-        let expected_attrs = SparAttrs::new(Vec::new(), Vec::new(), None);
+        let expected_attrs = SparAttrs::new(Vec::new(), Vec::new(), Replicate::None);
         assert_eq!(
             spar_stages.pop().unwrap(),
             SparStage::new(expected_attrs, tokens, 0)
@@ -532,7 +549,7 @@ mod tests {
 
         let input = make_vars(&["a"], &["u32"], &stage);
         let output = vec![];
-        let replicate = None;
+        let replicate = Replicate::None;
         let expected_attrs = SparAttrs::new(input, output, replicate);
         assert_eq!(
             spar_stages.pop().unwrap(),
@@ -561,7 +578,7 @@ mod tests {
 
         let input = make_vars(&["a", "b", "c"], &["u32", "u32", "u32"], &stage);
         let output = vec![];
-        let replicate = None;
+        let replicate = Replicate::None;
         let expected_attrs = SparAttrs::new(input, output, replicate);
         assert_eq!(
             spar_stages.pop().unwrap(),
@@ -588,7 +605,7 @@ mod tests {
 
         let input = vec![];
         let output = make_vars(&["a"], &["u32"], &stage);
-        let replicate = None;
+        let replicate = Replicate::None;
         let expected_attrs = SparAttrs::new(input, output, replicate);
         assert_eq!(
             spar_stages.pop().unwrap(),
@@ -618,7 +635,7 @@ mod tests {
 
         let input = vec![];
         let output = make_vars(&["a", "b", "c"], &["u32", "u32", "u32"], &stage);
-        let replicate = None;
+        let replicate = Replicate::None;
         let expected_attrs = SparAttrs::new(input, output, replicate);
         assert_eq!(
             spar_stages.pop().unwrap(),
@@ -643,7 +660,7 @@ mod tests {
         let (mut spar_stages, _) = parse_spar_stages(TokenBuffer::new2(stage).begin()).unwrap();
         assert_eq!(spar_stages.len(), 1);
 
-        let expected_attrs = SparAttrs::new(Vec::new(), Vec::new(), NonZeroU32::new(5));
+        let expected_attrs = SparAttrs::new(Vec::new(), Vec::new(), Replicate::Lit(NonZeroU32::new(5).unwrap()));
         assert_eq!(
             spar_stages.pop().unwrap(),
             SparStage::new(expected_attrs, tokens, 0)
@@ -664,7 +681,7 @@ mod tests {
         assert_eq!(spar_stages.len(), 4);
         spar_stages.reverse();
 
-        let expected_attrs = SparAttrs::new(Vec::new(), Vec::new(), None);
+        let expected_attrs = SparAttrs::new(Vec::new(), Vec::new(), Replicate::None);
         assert_eq!(
             spar_stages.pop().unwrap(),
             SparStage::new(expected_attrs, TokenStream::new(), 0)
@@ -672,7 +689,7 @@ mod tests {
 
         let input = make_vars(&["a"], &["u32"], &stage);
         let output = make_vars(&["b"], &["u32"], &stage);
-        let replicate = None;
+        let replicate = Replicate::None;
         let expected_attrs = SparAttrs::new(input, output, replicate);
         assert_eq!(
             spar_stages.pop().unwrap(),
@@ -681,7 +698,7 @@ mod tests {
 
         let input = make_vars(&["c", "d"], &["u32", "u32"], &stage);
         let output = make_vars(&["e", "f", "g"], &["u32", "u32", "u32"], &stage);
-        let replicate = None;
+        let replicate = Replicate::None;
         let expected_attrs = SparAttrs::new(input, output, replicate);
         assert_eq!(
             spar_stages.pop().unwrap(),
@@ -690,7 +707,7 @@ mod tests {
 
         let input = make_vars(&["h"], &["u32"], &stage);
         let output = make_vars(&["i"], &["u32"], &stage);
-        let replicate = NonZeroU32::new(5);
+        let replicate = Replicate::Lit(NonZeroU32::new(5).unwrap());
         let expected_attrs = SparAttrs::new(input, output, replicate);
         assert_eq!(
             spar_stages.pop().unwrap(),

@@ -23,6 +23,7 @@ fn main() -> Result<(), String> {
                 REPLICATE = 9,
                 {
                     input.sort();
+                    Some(input)
                 },
             );
         }

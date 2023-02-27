@@ -1,6 +1,4 @@
-use std::num::NonZeroU32;
-
-use crate::spar_stream::{SparStage, SparStream, SparVar};
+use crate::spar_stream::{Replicate, SparStage, SparStream, SparVar};
 use proc_macro2::{Delimiter, Group, Ident, Span, TokenStream, TokenTree};
 use quote::{quote, ToTokens};
 
@@ -74,10 +72,14 @@ impl ToTokens for Dispatcher {
 ///Note: replicate defaults to 1 when it is not given.
 ///If REPLICATE argument exists, then it defaults to what was written in the code
 ///if SPAR_NUM_WORKERS is set, all REPLICATES are set to that value
-fn gen_replicate(replicate: &Option<NonZeroU32>) -> TokenStream {
+fn gen_replicate(replicate: &Replicate) -> TokenStream {
     //NOTE: this needs to be i32 in rust_spp
     match replicate {
-        Some(n) => {
+        Replicate::Var(v) => {
+            quote!(#v as i32)
+        },
+
+        Replicate::Lit(n) => {
             let n: u32 = (*n).into();
             quote! {
                 if let Some(workers) = spar_num_workers {
@@ -87,7 +89,7 @@ fn gen_replicate(replicate: &Option<NonZeroU32>) -> TokenStream {
                 }
             }
         }
-        None => quote!(1),
+        Replicate::None => quote!(1),
     }
 }
 
@@ -135,7 +137,7 @@ fn get_idents_and_types_from_spar_vars(vars: &[SparVar]) -> (Vec<Ident>, Vec<Tok
 
 fn rust_spp_stage_struct_gen(stage: &SparStage) -> TokenStream {
     let (in_idents, in_types) = get_idents_and_types_from_spar_vars(&stage.attrs.input);
-    let (out_idents, out_types) = get_idents_and_types_from_spar_vars(&stage.attrs.output);
+    let (_, out_types) = get_idents_and_types_from_spar_vars(&stage.attrs.output);
 
     let struct_name = format!("SparStage{}", stage.id);
     let struct_ident = Ident::new(&struct_name, Span::call_site());
@@ -158,14 +160,12 @@ fn rust_spp_stage_struct_gen(stage: &SparStage) -> TokenStream {
         let out_types = make_tuple(&out_types);
 
         let input_tuple = make_mut_tuple(&in_idents);
-        let output_tuple = make_tuple(&out_idents);
 
         code.extend(quote! {
             impl rust_spp::blocks::inout_block::InOut<#in_types, #out_types> for #struct_ident {
                 fn process(&mut self, input: #in_types) -> Option<#out_types> {
                     let #input_tuple = input;
                     #stage_code
-                    Some(#output_tuple)
                 }
             }
         });
@@ -174,7 +174,7 @@ fn rust_spp_stage_struct_gen(stage: &SparStage) -> TokenStream {
         let input_tuple = make_mut_tuple(&in_idents);
         code.extend(quote! {
             impl rust_spp::blocks::in_block::In<#in_types> for #struct_ident {
-                fn process(&mut self, input: #in_types, order: u64) -> () {
+                fn process(&mut self, input: #in_types, order: u64) {
                     let #input_tuple = input;
                     #stage_code
                 }

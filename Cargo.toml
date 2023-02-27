@@ -2,6 +2,7 @@
 name = "spar-rust"
 version = "0.1.0"
 edition = "2021"
+authors = ["Leonardo Gibrowski Faé <leonardo.fae@edu.pucrs.br>"]
 
 [lib]
 proc-macro = true
@@ -14,8 +15,15 @@ quote = "1.0"
 rust-spp = { git = "https://github.com/GMAP/rust-ssp" }
 
 [dev-dependencies]
+criterion = "0.4"
+num_cpus = "1.15"
+rayon = "1.6"
+tokio = { version = "1.25", features = ["full"] }
+tokio-stream = "0.1"
+futures = "0.3"
 trybuild = "1.0"
 rand = "0.8"
 
-[workspace]
-members = []
+[[bench]]
+name = "mandelbrot"
+harness = false

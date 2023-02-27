@@ -24,6 +24,7 @@ fn main() -> Result<(), String> {
                     for i in input.iter_mut() {
                         *i = *i + 1;
                     }
+                    Some(input)
                 },
             );
 
@@ -35,6 +36,7 @@ fn main() -> Result<(), String> {
                     for i in input.iter_mut() {
                         *i = *i * 2;
                     }
+                    Some(input)
                 },
             );
         }
