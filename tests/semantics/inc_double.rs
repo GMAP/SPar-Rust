@@ -9,7 +9,7 @@ fn main() -> Result<(), String> {
         vec.push(i as u64);
     }
 
-    let other_vec = to_stream!(INPUT(vec: Vec<u64>), OUTPUT(other_vec: Vec<u64>), {
+    let other_vec = to_stream!(INPUT(vec: Vec<u64>), OUTPUT(Vec<u64>), {
         let mut vec_slice = &mut vec[0..];
         for _ in 0..10 {
             let split = vec_slice.split_at_mut(goal / 10);
@@ -18,7 +18,7 @@ fn main() -> Result<(), String> {
 
             STAGE(
                 INPUT(input: Vec<u64>),
-                OUTPUT(input: Vec<u64>),
+                OUTPUT(Vec<u64>),
                 REPLICATE = 9,
                 {
                     for i in input.iter_mut() {
@@ -30,7 +30,7 @@ fn main() -> Result<(), String> {
 
             STAGE(
                 INPUT(input: Vec<u64>),
-                OUTPUT(input: Vec<u64>),
+                OUTPUT(Vec<u64>),
                 REPLICATE = 9,
                 {
                     for i in input.iter_mut() {

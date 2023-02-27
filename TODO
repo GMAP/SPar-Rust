@@ -6,4 +6,3 @@ From Dalvan's thesis:
 Code generation
 	basic stream analysis (based on Dalvan's thesis)
 	Change the code generation to create independent structs
-

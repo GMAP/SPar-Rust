@@ -11,7 +11,7 @@ fn main() -> Result<(), String> {
         }
     }
 
-    let other_vec = to_stream!(INPUT(vec: Vec<u32>), OUTPUT(other_vec: Vec<u32>), {
+    let other_vec = to_stream!(INPUT(vec: Vec<u32>), OUTPUT(Vec<u32>), {
         let mut vec_slice = &mut vec[0..];
         for _ in 0..10 {
             let split = vec_slice.split_at_mut(10000);
@@ -19,7 +19,7 @@ fn main() -> Result<(), String> {
             let input = split.0.to_vec();
             STAGE(
                 INPUT(input: Vec<u32>),
-                OUTPUT(input: Vec<u32>),
+                OUTPUT(Vec<u32>),
                 REPLICATE = 9,
                 {
                     input.sort();

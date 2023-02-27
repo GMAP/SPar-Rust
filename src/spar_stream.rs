@@ -17,13 +17,28 @@ mod kw {
 }
 
 #[derive(Debug, Clone)]
+pub struct VarType(pub TokenStream);
+
+impl PartialEq for VarType {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.to_string() == other.0.to_string()
+    }
+}
+
+impl ToTokens for VarType {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        tokens.extend(self.0.clone())
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct SparVar {
     pub identifier: Ident,
-    pub var_type: TokenStream,
+    pub var_type: VarType,
 }
 
 impl SparVar {
-    fn new(identifier: Ident, var_type: TokenStream) -> Self {
+    fn new(identifier: Ident, var_type: VarType) -> Self {
         Self {
             identifier,
             var_type,
@@ -34,7 +49,7 @@ impl SparVar {
 impl PartialEq for SparVar {
     fn eq(&self, other: &Self) -> bool {
         self.identifier == other.identifier
-            && self.var_type.to_string() == other.var_type.to_string()
+            && self.var_type.0.to_string() == other.var_type.0.to_string()
     }
 }
 
@@ -42,7 +57,7 @@ impl PartialEq for SparVar {
 pub enum Replicate {
     Lit(NonZeroU32),
     Var(Ident),
-    None
+    None,
 }
 
 impl Replicate {
@@ -58,12 +73,12 @@ impl Replicate {
 #[derive(Debug, PartialEq, Clone)]
 pub struct SparAttrs {
     pub input: Vec<SparVar>,
-    pub output: Vec<SparVar>,
+    pub output: VarType,
     pub replicate: Replicate,
 }
 
 impl SparAttrs {
-    pub fn new(input: Vec<SparVar>, output: Vec<SparVar>, replicate: Replicate) -> Self {
+    pub fn new(input: Vec<SparVar>, output: VarType, replicate: Replicate) -> Self {
         Self {
             input,
             output,
@@ -112,19 +127,15 @@ impl TryFrom<&proc_macro::TokenStream> for SparStream {
         if !code.is_empty() {
             let mut stage = SparStage::new(attrs.clone(), code, 0);
             if let Some(s) = stages.get(0) {
-                stage.attrs.output = s.attrs.input.clone();
+                let input_types: Vec<TokenStream> =
+                    s.attrs.input.iter().map(|i| i.var_type.0.clone()).collect();
+                stage.attrs.output = VarType(quote! { ( #(#input_types),* ) });
             }
             stages.insert(0, stage)
         }
 
         if let Some(stage) = stages.last() {
-            if !stage
-                .attrs
-                .output
-                .iter()
-                .zip(&attrs.output)
-                .all(|(a, b)| a.var_type.to_string() == b.var_type.to_string())
-            {
+            if stage.attrs.output != attrs.output {
                 return Err(syn::Error::new(
                     Span::call_site(),
                     "final stage output types does not match stream output types",
@@ -137,30 +148,22 @@ impl TryFrom<&proc_macro::TokenStream> for SparStream {
 }
 
 fn get_type(cursor: Cursor) -> Result<(TokenStream, Cursor)> {
+    let mut next = cursor;
     let mut code = TokenStream::new();
-    if let Some((token_tree, mut next)) = cursor.token_tree() {
+    while let Some((token_tree, rest)) = next.token_tree() {
         if let TokenTree::Punct(ref punct) = token_tree {
-            if punct.as_char() == ':' {
-                while let Some((token_tree, rest)) = next.token_tree() {
-                    if let TokenTree::Punct(ref punct) = token_tree {
-                        if punct.as_char() == ',' {
-                            return Ok((code, next));
-                        }
-                    }
-                    code.extend(token_tree.into_token_stream());
-                    next = rest;
-                }
-                if code.is_empty() {
-                    return Err(syn::Error::new(next.span(), "expected type, found EOF"));
-                } else {
-                    return Ok((code, next));
-                }
+            if punct.as_char() == ',' {
+                return Ok((code, next));
             }
         }
-        let msg = format!("expected ':', found '{token_tree}'");
-        return Err(syn::Error::new(next.span(), msg));
+        code.extend(token_tree.into_token_stream());
+        next = rest;
     }
-    Err(syn::Error::new(cursor.span(), "expected ':', found EOF"))
+    if code.is_empty() {
+        Err(syn::Error::new(next.span(), "expected type, found EOF"))
+    } else {
+        Ok((code, next))
+    }
 }
 
 /// returns (arguments inside, after parenthesis)
@@ -184,9 +187,10 @@ fn get_variables(cursor: Cursor) -> Result<(Vec<SparVar>, Cursor)> {
     while let Some((token_tree, next)) = rest.token_tree() {
         match &token_tree {
             TokenTree::Ident(identifier) => {
+                let next = skip_punct(next, ':')?;
                 let (var_type, next) = get_type(next)?;
-                vars.push(SparVar::new(identifier.clone(), var_type));
-                match skip_comma(next) {
+                vars.push(SparVar::new(identifier.clone(), VarType(var_type)));
+                match skip_punct(next, ',') {
                     Ok(next) => rest = next,
                     Err(e) => {
                         if next.token_tree().is_none() {
@@ -239,24 +243,27 @@ fn parse_replicate(cursor: Cursor) -> Result<(Replicate, Cursor)> {
     ))
 }
 
-fn skip_comma(cursor: Cursor) -> Result<Cursor> {
+fn skip_punct(cursor: Cursor, punct: char) -> Result<Cursor> {
     if let Some((token_tree, next)) = cursor.token_tree() {
-        if let TokenTree::Punct(ref punct) = token_tree {
-            if punct.as_char() == ',' {
+        if let TokenTree::Punct(ref p) = token_tree {
+            if p.as_char() == punct {
                 return Ok(next);
             }
         }
-        let msg = format!("expected ',', found '{token_tree}'");
+        let msg = format!("expected '{punct}', found '{token_tree}'");
         return Err(syn::Error::new(next.span(), msg));
     }
-    Err(syn::Error::new(cursor.span(), "expected ',', found EOF"))
+    Err(syn::Error::new(
+        cursor.span(),
+        "expected '{punct}', found EOF",
+    ))
 }
 
 fn parse_spar_args(cursor: Cursor) -> Result<(SparAttrs, Cursor, Cursor)> {
     let (args, after) = skip_parenthesis(cursor)?;
 
     let mut input: Vec<SparVar> = Vec::new();
-    let mut output: Vec<SparVar> = Vec::new();
+    let mut output = VarType(TokenStream::new());
     let mut replicate = Replicate::None;
 
     let mut rest = args;
@@ -275,21 +282,22 @@ fn parse_spar_args(cursor: Cursor) -> Result<(SparAttrs, Cursor, Cursor)> {
                         return Err(syn::Error::new(rest.span(), "INPUT cannot be empty"));
                     }
                     input = i;
-                    rest = skip_comma(next)?;
+                    rest = skip_punct(next, ',')?;
                 }
                 "OUTPUT" => {
-                    if !output.is_empty() {
+                    if !output.0.is_empty() {
                         return Err(syn::Error::new(
                             rest.span(),
                             "multiple OUTPUTs aren't allowed",
                         ));
                     }
-                    let (o, next) = get_variables(next)?;
+                    let (into, next) = skip_parenthesis(next)?;
+                    let (o, _) = get_type(into)?;
                     if o.is_empty() {
                         return Err(syn::Error::new(rest.span(), "OUTPUT cannot be empty"));
                     }
-                    output = o;
-                    rest = skip_comma(next)?;
+                    output = VarType(o);
+                    rest = skip_punct(next, ',')?;
                 }
                 "REPLICATE" => {
                     if replicate.is_some() {
@@ -300,7 +308,7 @@ fn parse_spar_args(cursor: Cursor) -> Result<(SparAttrs, Cursor, Cursor)> {
                     }
                     let (r, next) = parse_replicate(next)?;
                     replicate = r;
-                    rest = skip_comma(next)?;
+                    rest = skip_punct(next, ',')?;
                 }
 
                 _ => {
@@ -311,7 +319,7 @@ fn parse_spar_args(cursor: Cursor) -> Result<(SparAttrs, Cursor, Cursor)> {
 
             TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => {
                 let (group_cursor, _, next) = rest.group(group.delimiter()).unwrap();
-                if next.token_tree().is_some() && skip_comma(next).is_err() {
+                if next.token_tree().is_some() && skip_punct(next, ',').is_err() {
                     return Err(syn::Error::new(
                         next.span(),
                         "unexpected token after code block",
@@ -381,7 +389,6 @@ fn parse_spar_stages(cursor: Cursor) -> Result<(Vec<SparStage>, TokenStream)> {
         if let Some(cursor) = groups.pop() {
             rest = cursor;
             let code = code_stack.pop().unwrap();
-            dbg!(&code);
             code_stack
                 .last_mut()
                 .unwrap()
@@ -474,7 +481,7 @@ mod tests {
                 get_ident_span(ident, tokens.clone()).expect("Failed to find identifier in stream");
             vec.push(SparVar::new(
                 Ident::new(ident, span),
-                Ident::new(types[i], span).to_token_stream(),
+                VarType(Ident::new(types[i], span).to_token_stream()),
             ));
         }
 
@@ -523,7 +530,8 @@ mod tests {
         let (mut spar_stages, _) = parse_spar_stages(TokenBuffer::new2(stage).begin()).unwrap();
         assert_eq!(spar_stages.len(), 1);
 
-        let expected_attrs = SparAttrs::new(Vec::new(), Vec::new(), Replicate::None);
+        let expected_attrs =
+            SparAttrs::new(Vec::new(), VarType(TokenStream::new()), Replicate::None);
         assert_eq!(
             spar_stages.pop().unwrap(),
             SparStage::new(expected_attrs, tokens, 0)
@@ -548,7 +556,7 @@ mod tests {
         assert_eq!(spar_stages.len(), 1);
 
         let input = make_vars(&["a"], &["u32"], &stage);
-        let output = vec![];
+        let output = VarType(TokenStream::new());
         let replicate = Replicate::None;
         let expected_attrs = SparAttrs::new(input, output, replicate);
         assert_eq!(
@@ -577,7 +585,7 @@ mod tests {
         assert_eq!(spar_stages.len(), 1);
 
         let input = make_vars(&["a", "b", "c"], &["u32", "u32", "u32"], &stage);
-        let output = vec![];
+        let output = VarType(TokenStream::new());
         let replicate = Replicate::None;
         let expected_attrs = SparAttrs::new(input, output, replicate);
         assert_eq!(
@@ -594,17 +602,16 @@ mod tests {
                 }
         };
         let stage = quote! {
-            STAGE(OUTPUT(a: u32), {
+            STAGE(OUTPUT(u32), {
                 #tokens
             });
         };
 
-        let (mut spar_stages, _) =
-            parse_spar_stages(TokenBuffer::new2(stage.clone()).begin()).unwrap();
+        let (mut spar_stages, _) = parse_spar_stages(TokenBuffer::new2(stage).begin()).unwrap();
         assert_eq!(spar_stages.len(), 1);
 
         let input = vec![];
-        let output = make_vars(&["a"], &["u32"], &stage);
+        let output = VarType(quote!(u32));
         let replicate = Replicate::None;
         let expected_attrs = SparAttrs::new(input, output, replicate);
         assert_eq!(
@@ -624,17 +631,16 @@ mod tests {
         };
 
         let stage = quote! {
-            STAGE(OUTPUT(a: u32, b: u32, c: u32), {
+            STAGE(OUTPUT((u32, u32, u32)), {
                 #tokens
             });
         };
 
-        let (mut spar_stages, _) =
-            parse_spar_stages(TokenBuffer::new2(stage.clone()).begin()).unwrap();
+        let (mut spar_stages, _) = parse_spar_stages(TokenBuffer::new2(stage).begin()).unwrap();
         assert_eq!(spar_stages.len(), 1);
 
         let input = vec![];
-        let output = make_vars(&["a", "b", "c"], &["u32", "u32", "u32"], &stage);
+        let output = VarType(quote!((u32, u32, u32)));
         let replicate = Replicate::None;
         let expected_attrs = SparAttrs::new(input, output, replicate);
         assert_eq!(
@@ -660,7 +666,11 @@ mod tests {
         let (mut spar_stages, _) = parse_spar_stages(TokenBuffer::new2(stage).begin()).unwrap();
         assert_eq!(spar_stages.len(), 1);
 
-        let expected_attrs = SparAttrs::new(Vec::new(), Vec::new(), Replicate::Lit(NonZeroU32::new(5).unwrap()));
+        let expected_attrs = SparAttrs::new(
+            Vec::new(),
+            VarType(TokenStream::new()),
+            Replicate::Lit(NonZeroU32::new(5).unwrap()),
+        );
         assert_eq!(
             spar_stages.pop().unwrap(),
             SparStage::new(expected_attrs, tokens, 0)
@@ -671,9 +681,9 @@ mod tests {
     fn multiple_stages() {
         let stage = quote! {
             STAGE({});
-            STAGE(INPUT(a: u32), OUTPUT(b: u32), {});
-            STAGE(INPUT(c: u32, d: u32), OUTPUT(e: u32, f: u32, g: u32), {});
-            STAGE(INPUT(h: u32), OUTPUT(i: u32), REPLICATE = 5, {});
+            STAGE(INPUT(a: u32), OUTPUT(u32), {});
+            STAGE(INPUT(c: u32, d: u32), OUTPUT((u32, u32, u32)), {});
+            STAGE(INPUT(h: u32), OUTPUT(u32), REPLICATE = 5, {});
         };
 
         let (mut spar_stages, _) =
@@ -681,14 +691,15 @@ mod tests {
         assert_eq!(spar_stages.len(), 4);
         spar_stages.reverse();
 
-        let expected_attrs = SparAttrs::new(Vec::new(), Vec::new(), Replicate::None);
+        let expected_attrs =
+            SparAttrs::new(Vec::new(), VarType(TokenStream::new()), Replicate::None);
         assert_eq!(
             spar_stages.pop().unwrap(),
             SparStage::new(expected_attrs, TokenStream::new(), 0)
         );
 
         let input = make_vars(&["a"], &["u32"], &stage);
-        let output = make_vars(&["b"], &["u32"], &stage);
+        let output = VarType(quote!(u32));
         let replicate = Replicate::None;
         let expected_attrs = SparAttrs::new(input, output, replicate);
         assert_eq!(
@@ -697,7 +708,7 @@ mod tests {
         );
 
         let input = make_vars(&["c", "d"], &["u32", "u32"], &stage);
-        let output = make_vars(&["e", "f", "g"], &["u32", "u32", "u32"], &stage);
+        let output = VarType(quote!((u32, u32, u32)));
         let replicate = Replicate::None;
         let expected_attrs = SparAttrs::new(input, output, replicate);
         assert_eq!(
@@ -706,7 +717,7 @@ mod tests {
         );
 
         let input = make_vars(&["h"], &["u32"], &stage);
-        let output = make_vars(&["i"], &["u32"], &stage);
+        let output = VarType(quote!(u32));
         let replicate = Replicate::Lit(NonZeroU32::new(5).unwrap());
         let expected_attrs = SparAttrs::new(input, output, replicate);
         assert_eq!(
@@ -724,7 +735,7 @@ mod tests {
 
         let (spar_stages, _) = parse_spar_stages(TokenBuffer::new2(stage).begin()).unwrap();
         assert_eq!(
-            spar_stages[0].attrs.input[0].var_type.to_string(),
+            spar_stages[0].attrs.input[0].var_type.0.to_string(),
             complex_type.to_string()
         );
     }

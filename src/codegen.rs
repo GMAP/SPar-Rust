@@ -1,4 +1,4 @@
-use crate::spar_stream::{Replicate, SparStage, SparStream, SparVar};
+use crate::spar_stream::{Replicate, SparStage, SparStream, SparVar, VarType};
 use proc_macro2::{Delimiter, Group, Ident, Span, TokenStream, TokenTree};
 use quote::{quote, ToTokens};
 
@@ -31,14 +31,20 @@ impl Dispatcher {
         }
     }
 
-    pub fn new(stage: &SparStage) -> (Self, bool) {
+    pub fn new(stage: &SparStage, next_stage: Option<&SparStage>) -> (Self, bool) {
         let mut idents = Vec::new();
-        for output in &stage.attrs.output {
-            idents.push(output.identifier.clone())
+        if let Some(next_stage) = next_stage {
+            for input in &next_stage.attrs.input {
+                idents.push(input.identifier.clone())
+            }
+        } else {
+            for input in &stage.attrs.input {
+                idents.push(input.identifier.clone())
+            }
         }
-        let outputs = make_tuple(&idents);
+        let inputs = make_tuple(&idents);
 
-        let pipeline_post = quote! { spar_pipeline.post(#outputs).unwrap(); };
+        let pipeline_post = quote! { spar_pipeline.post(#inputs).unwrap(); };
         let mut gen = TokenStream::new();
         let mut found = false;
         for token in stage.code.clone().into_iter() {
@@ -48,14 +54,9 @@ impl Dispatcher {
         if found {
             (Self { code: gen }, true)
         } else {
-            idents.clear();
-            for input in &stage.attrs.input {
-                idents.push(input.identifier.clone())
-            }
-            let inputs = make_tuple(&idents);
             (
                 Self {
-                    code: quote! { spar_pipeline.post(#inputs).unwrap(); },
+                    code: pipeline_post,
                 },
                 false,
             )
@@ -77,7 +78,7 @@ fn gen_replicate(replicate: &Replicate) -> TokenStream {
     match replicate {
         Replicate::Var(v) => {
             quote!(#v as i32)
-        },
+        }
 
         Replicate::Lit(n) => {
             let n: u32 = (*n).into();
@@ -123,7 +124,7 @@ fn make_mut_tuple<T: ToTokens>(tokens: &[T]) -> TokenStream {
     quote! { ( #(mut #tokens),* ) }
 }
 
-fn get_idents_and_types_from_spar_vars(vars: &[SparVar]) -> (Vec<Ident>, Vec<TokenStream>) {
+fn get_idents_and_types_from_spar_vars(vars: &[SparVar]) -> (Vec<Ident>, Vec<VarType>) {
     let mut idents = Vec::new();
     let mut types = Vec::new();
 
@@ -137,7 +138,7 @@ fn get_idents_and_types_from_spar_vars(vars: &[SparVar]) -> (Vec<Ident>, Vec<Tok
 
 fn rust_spp_stage_struct_gen(stage: &SparStage) -> TokenStream {
     let (in_idents, in_types) = get_idents_and_types_from_spar_vars(&stage.attrs.input);
-    let (_, out_types) = get_idents_and_types_from_spar_vars(&stage.attrs.output);
+    let out_types = &stage.attrs.output;
 
     let struct_name = format!("SparStage{}", stage.id);
     let struct_ident = Ident::new(&struct_name, Span::call_site());
@@ -155,9 +156,8 @@ fn rust_spp_stage_struct_gen(stage: &SparStage) -> TokenStream {
         }
     };
 
-    if !in_types.is_empty() && !out_types.is_empty() {
+    if !in_types.is_empty() && !out_types.0.is_empty() {
         let in_types = make_tuple(&in_types);
-        let out_types = make_tuple(&out_types);
 
         let input_tuple = make_mut_tuple(&in_idents);
 
@@ -192,7 +192,7 @@ fn rust_spp_gen_top_level_code(spar_stream: &mut SparStream) -> (Vec<TokenStream
     let SparStream { ref mut stages, .. } = spar_stream;
     let mut structs = Vec::new();
 
-    let (dispatcher, found) = Dispatcher::new(&stages[0]);
+    let (dispatcher, found) = Dispatcher::new(&stages[0], stages.get(1));
     if found {
         stages.remove(0);
     }
