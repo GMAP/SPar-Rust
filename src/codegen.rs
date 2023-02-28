@@ -241,8 +241,13 @@ fn rust_spp_gen(spar_stream: &mut SparStream) -> TokenStream {
         ];
 
         #dispatcher
-        spar_pipeline.collect()
     });
+
+    if !spar_stream.attrs.output.0.is_empty() {
+        code.extend(quote! {
+            spar_pipeline.collect()
+        })
+    }
 
     code
 }
