@@ -210,10 +210,25 @@ fn rust_spp_pipeline_arg(stage: &SparStage) -> TokenStream {
     let struct_ident = Ident::new(&struct_name, Span::call_site());
 
     if attrs.replicate.is_none() {
-        quote! { rust_spp::sequential!(#struct_ident::new()) }
+        quote! { rust_spp::sequential_ordered!(#struct_ident::new()) }
     } else {
         let replicate = gen_replicate(&attrs.replicate);
         quote! { rust_spp::parallel!(#struct_ident::new(), #replicate) }
+    }
+}
+
+fn rust_spp_gen_pipeline(spar_stream: &SparStream, gen: TokenStream) -> TokenStream {
+    if let Some(stage) = spar_stream.stages.last() {
+        if stage.attrs.replicate == Replicate::None && spar_stream.attrs.output.0.is_empty() {
+            return quote! { let spar_pipeline = rust_spp::pipeline![#gen]; };
+        }
+    }
+
+    quote! {
+        let spar_pipeline = rust_spp::pipeline![
+            #gen,
+            collect_ordered!()
+        ];
     }
 }
 
@@ -234,18 +249,15 @@ fn rust_spp_gen(spar_stream: &mut SparStream) -> TokenStream {
         gen.extend(rust_spp_pipeline_arg(stage));
     }
 
-    code.extend(quote! {
-        let spar_pipeline = rust_spp::pipeline![
-            #gen,
-            collect_ordered!()
-        ];
-
-        #dispatcher
-    });
-
+    code.extend(rust_spp_gen_pipeline(spar_stream, gen));
+    code.extend(quote! {#dispatcher});
     if !spar_stream.attrs.output.0.is_empty() {
         code.extend(quote! {
             spar_pipeline.collect()
+        })
+    } else {
+        code.extend(quote! {
+            spar_pipeline.end_and_wait();
         })
     }
 

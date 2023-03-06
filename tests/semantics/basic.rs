@@ -7,7 +7,6 @@ fn main() -> Result<(), String> {
 
     let stream_result = to_stream!(INPUT(a: u32), OUTPUT(u32), {
         STAGE(INPUT(a: u32), OUTPUT(u32), {
-            let mut a = a;
             for _ in 0..10 {
                 a += 1;
             }
