@@ -222,6 +222,16 @@ fn find_variables_in_code(tokens: TokenStream, to_find: &[SparVar]) -> Result<Ve
                 vars.extend(inner_vars);
             }
             TokenTree::Ident(ident) if ident == "let" => {
+                //TODO: TUPLES!!!
+                while let Some((token, after)) = next.token_tree() {
+                    if let TokenTree::Ident(ident) = token {
+                        if ident == "mut" {
+                            next = after;
+                            continue;
+                        }
+                    }
+                    break;
+                }
                 if let Some((token, after)) = next.token_tree() {
                     if let TokenTree::Ident(ident) = token {
                         if let Some(v) = to_find.iter().find(|var| var.identifier == ident) {
