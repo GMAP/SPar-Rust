@@ -136,7 +136,7 @@ fn get_idents_and_types_from_spar_vars(vars: &[SparVar]) -> (Vec<Ident>, Vec<Var
     (idents, types)
 }
 
-fn rust_spp_stage_struct_gen(stage: &SparStage) -> TokenStream {
+fn rust_spp_stage_struct_gen(stage: &SparStage, _next: Option<&SparStage>) -> TokenStream {
     let (in_idents, in_types) = get_idents_and_types_from_spar_vars(&stage.attrs.input);
     let out_types = &stage.attrs.output;
 
@@ -197,8 +197,10 @@ fn rust_spp_gen_top_level_code(spar_stream: &mut SparStream) -> (Vec<TokenStream
         stages.remove(0);
     }
 
-    for stage in stages {
-        structs.push(rust_spp_stage_struct_gen(stage));
+    let mut stages = stages.iter().peekable();
+    while let Some(stage) = stages.next() {
+        let next = stages.peek();
+        structs.push(rust_spp_stage_struct_gen(stage, next.copied()));
     }
 
     (structs, dispatcher)
