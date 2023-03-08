@@ -9,7 +9,7 @@ fn main() -> Result<(), String> {
         vec.push(i as u64);
     }
 
-    let mut result: Vec<Vec<u64>> = Vec::new();
+    let result: Vec<Vec<u64>> = Vec::new();
     to_stream!(INPUT(vec: Vec<u64>, result: Vec<Vec<u64>>), {
         let mut vec_slice = &mut vec[0..];
         for _ in 0..10 {

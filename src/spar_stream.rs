@@ -38,11 +38,15 @@ pub struct SparVar {
 }
 
 impl SparVar {
-    fn new(identifier: Ident, var_type: VarType) -> Self {
+    pub fn new(identifier: Ident, var_type: VarType) -> Self {
         Self {
             identifier,
             var_type,
         }
+    }
+
+    pub fn is_vec(&self) -> bool {
+        self.var_type.0.to_string().starts_with("Vec<")
     }
 }
 
@@ -145,7 +149,7 @@ impl TryFrom<&proc_macro::TokenStream> for SparStream {
                 .into_token_stream()
                 .into(),
         );
-        let (attrs, _, block) = parse_spar_args(input.begin())?;
+        let (mut attrs, _, block) = parse_spar_args(input.begin())?;
         let (mut stages, code) = parse_spar_stages(block)?;
 
         // if there is any code before the stages, it becomes the first stage:
@@ -175,26 +179,27 @@ impl TryFrom<&proc_macro::TokenStream> for SparStream {
             }
         }
 
+        let mut external_vars: Vec<SparVar> = Vec::new();
         for stage in &stages {
             for input in &stage.state {
                 if !attrs.input.iter().any(|var| var == input) {
                     return Err(syn::Error::new(Span::call_site(), "every stage input must either be sent from the previous stage, or be a stream input"));
                 }
+
+                if !external_vars.contains(input) {
+                    external_vars.push(input.clone());
+                }
             }
         }
 
-        let external_vars = attrs
-            .input
-            .iter()
-            .filter_map(|var| {
-                if let Some(stage) = stages.get(0) {
-                    if !stage.attrs.input.contains(var) {
-                        return Some(var.clone());
-                    }
+        if let Some(stage) = stages.last_mut() {
+            for var in &stage.state {
+                if external_vars.contains(var) {
+                    stage.attrs.output.push(var.clone());
+                    attrs.output.push(var.clone());
                 }
-                None
-            })
-            .collect();
+            }
+        }
 
         Ok(Self {
             attrs,

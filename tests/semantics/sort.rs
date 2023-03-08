@@ -11,8 +11,8 @@ fn main() -> Result<(), String> {
         }
     }
 
-    let mut result: Vec<u32> = Vec::new();
-    let other_vec = to_stream!(INPUT(vec: Vec<u32>, result: Vec<u32>), {
+    let result: Vec<u32> = Vec::new();
+    to_stream!(INPUT(vec: Vec<u32>, result: Vec<u32>), {
         let mut vec_slice = &mut vec[0..];
         for _ in 0..10 {
             let split = vec_slice.split_at_mut(10000);
@@ -20,21 +20,18 @@ fn main() -> Result<(), String> {
             let input = split.0.to_vec();
             STAGE(INPUT(input: Vec<u32>, result: Vec<u32>), REPLICATE = 9, {
                 input.sort();
-                result.extend(&input)
+                result.extend(input);
             });
         }
     });
 
-    assert_eq!(other_vec.len(), 10);
+    assert_eq!(result.len(), 100000);
     let mut cur = 0;
     let mut index = 0;
-    for v in other_vec {
-        assert_eq!(v.len(), 10000);
-        for i in v {
-            assert!(cur <= i, "cur: {cur}, i: {i}, at index: {index}");
-            cur = i;
-            index += 1;
-        }
+    for v in result {
+        assert!(cur <= v, "cur: {cur}, i: {v}, at index: {index}");
+        cur = v;
+        index += 1;
     }
 
     Ok(())
