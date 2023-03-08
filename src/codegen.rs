@@ -136,36 +136,58 @@ fn get_idents_and_types_from_spar_vars(vars: &[SparVar]) -> (Vec<Ident>, Vec<Var
     (idents, types)
 }
 
-fn rust_spp_stage_struct_gen(stage: &SparStage, _next: Option<&SparStage>) -> TokenStream {
+fn rust_spp_stage_struct_gen(stage: &SparStage) -> TokenStream {
     let (in_idents, in_types) = get_idents_and_types_from_spar_vars(&stage.attrs.input);
-    let out_types = &stage.attrs.output;
+    let (out_idents, out_types) = get_idents_and_types_from_spar_vars(&stage.attrs.output);
 
     let struct_name = format!("SparStage{}", stage.id);
     let struct_ident = Ident::new(&struct_name, Span::call_site());
     let stage_code = &stage.code;
+    let state = &stage.state;
+    let state_idents: TokenStream = state
+        .iter()
+        .flat_map(|var| {
+            let ident = &var.identifier;
+            quote! { #ident, }
+        })
+        .collect();
 
     let mut code = quote! {
         struct #struct_ident {
-            // TODO: we need to declare variables for stateful computation
+            #(#state),*
         }
 
         impl #struct_ident {
-            fn new() -> Self {
-                Self {}
+            fn new(#(#state),*) -> Self {
+                Self { #state_idents }
             }
         }
     };
 
-    if !in_types.is_empty() && !out_types.0.is_empty() {
+    let state_deconstruct: TokenStream = state
+        .iter()
+        .flat_map(|var| {
+            let ident = &var.identifier;
+            quote! {
+                let #ident = &mut self.#ident;
+            }
+        })
+        .collect();
+
+    if !in_types.is_empty() && !out_types.is_empty() {
         let in_types = make_tuple(&in_types);
+        let out_types = make_tuple(&out_types);
 
         let input_tuple = make_mut_tuple(&in_idents);
+        let output_tuple = make_tuple(&out_idents);
 
         code.extend(quote! {
             impl rust_spp::blocks::inout_block::InOut<#in_types, #out_types> for #struct_ident {
                 fn process(&mut self, input: #in_types) -> Option<#out_types> {
                     let #input_tuple = input;
+                    #state_deconstruct
                     #stage_code
+                    Some(#output_tuple)
                 }
             }
         });
@@ -176,6 +198,7 @@ fn rust_spp_stage_struct_gen(stage: &SparStage, _next: Option<&SparStage>) -> To
             impl rust_spp::blocks::in_block::In<#in_types> for #struct_ident {
                 fn process(&mut self, input: #in_types, order: u64) {
                     let #input_tuple = input;
+                    #state_deconstruct
                     #stage_code
                 }
             }
@@ -197,41 +220,50 @@ fn rust_spp_gen_top_level_code(spar_stream: &mut SparStream) -> (Vec<TokenStream
         stages.remove(0);
     }
 
-    let mut stages = stages.iter().peekable();
-    while let Some(stage) = stages.next() {
-        let next = stages.peek();
-        structs.push(rust_spp_stage_struct_gen(stage, next.copied()));
+    for stage in stages {
+        structs.push(rust_spp_stage_struct_gen(stage));
     }
 
     (structs, dispatcher)
 }
 
 fn rust_spp_pipeline_arg(stage: &SparStage) -> TokenStream {
-    let SparStage { attrs, id, .. } = stage;
+    let SparStage {
+        attrs, id, state, ..
+    } = stage;
     let struct_name = format!("SparStage{id}");
     let struct_ident = Ident::new(&struct_name, Span::call_site());
 
+    let struct_new_args: Vec<TokenStream> = state
+        .iter()
+        .map(|var| {
+            let ident = &var.identifier;
+            quote! { #ident }
+        })
+        .collect();
+
     if attrs.replicate.is_none() {
-        quote! { rust_spp::sequential_ordered!(#struct_ident::new()) }
+        quote! { rust_spp::sequential_ordered!(#struct_ident::new( #(#struct_new_args),* )) }
     } else {
         let replicate = gen_replicate(&attrs.replicate);
-        quote! { rust_spp::parallel!(#struct_ident::new(), #replicate) }
+        quote! { rust_spp::parallel!(#struct_ident::new( #(#struct_new_args.clone()),* ), #replicate) }
     }
 }
 
 fn rust_spp_gen_pipeline(spar_stream: &SparStream, gen: TokenStream) -> TokenStream {
-    if let Some(stage) = spar_stream.stages.last() {
-        if stage.attrs.replicate == Replicate::None && spar_stream.attrs.output.0.is_empty() {
-            return quote! { let spar_pipeline = rust_spp::pipeline![#gen]; };
-        }
-    }
+   // if let Some(stage) = spar_stream.stages.last() {
+   //     if stage.attrs.replicate == Replicate::None && spar_stream.attrs.output.is_empty() {
+   //         return quote! { let mut spar_pipeline = rust_spp::pipeline![#gen]; };
+   //     }
+   // }
 
-    quote! {
-        let spar_pipeline = rust_spp::pipeline![
-            #gen,
-            collect_ordered!()
-        ];
-    }
+   // quote! {
+   //     let mut spar_pipeline = rust_spp::pipeline![
+   //         #gen,
+   //         collect_ordered!()
+   //     ];
+   // }
+   quote! { let mut spar_pipeline = rust_spp::pipeline![#gen]; }
 }
 
 fn rust_spp_gen(spar_stream: &mut SparStream) -> TokenStream {
@@ -253,7 +285,7 @@ fn rust_spp_gen(spar_stream: &mut SparStream) -> TokenStream {
 
     code.extend(rust_spp_gen_pipeline(spar_stream, gen));
     code.extend(quote! {#dispatcher});
-    if !spar_stream.attrs.output.0.is_empty() {
+    if !spar_stream.attrs.output.is_empty() {
         code.extend(quote! {
             spar_pipeline.collect()
         })

@@ -1,19 +1,18 @@
-extern crate spar_rust;
 extern crate rust_spp;
+extern crate spar_rust;
 use spar_rust::to_stream;
 
 fn main() -> Result<(), String> {
-    let a = 1;
+    let mut a = 1;
 
-    let stream_result = to_stream!(INPUT(a: u32), OUTPUT(u32), {
-        STAGE(INPUT(a: u32), OUTPUT(u32), {
+    to_stream!(INPUT(a: u32), {
+        STAGE(INPUT(a: u32), {
             for _ in 0..10 {
                 a += 1;
             }
-            Some(a)
         });
     });
 
-    assert_eq!(stream_result.iter().map(|i| *i).reduce(|acc, i| acc + i).unwrap(), 11);
+    assert_eq!(a, 11);
     Ok(())
 }

@@ -9,7 +9,8 @@ fn main() -> Result<(), String> {
         vec.push(i as u64);
     }
 
-    let other_vec = to_stream!(INPUT(vec: Vec<u64>), OUTPUT(Vec<u64>), {
+    let mut result: Vec<Vec<u64>> = Vec::new();
+    to_stream!(INPUT(vec: Vec<u64>, result: Vec<Vec<u64>>), {
         let mut vec_slice = &mut vec[0..];
         for _ in 0..10 {
             let split = vec_slice.split_at_mut(goal / 10);
@@ -18,33 +19,31 @@ fn main() -> Result<(), String> {
 
             STAGE(
                 INPUT(input: Vec<u64>),
-                OUTPUT(Vec<u64>),
+                OUTPUT(input: Vec<u64>),
                 REPLICATE = 9,
                 {
                     for i in input.iter_mut() {
                         *i = *i + 1;
                     }
-                    Some(input)
                 },
             );
 
             STAGE(
-                INPUT(input: Vec<u64>),
-                OUTPUT(Vec<u64>),
+                INPUT(input: Vec<u64>, result: Vec<Vec<u64>>),
                 REPLICATE = 9,
                 {
                     for i in input.iter_mut() {
                         *i = *i * 2;
                     }
-                    Some(input)
+                    result.push(input);
                 },
             );
         }
     });
 
-    assert_eq!(other_vec.len(), 10);
+    assert_eq!(result.len(), 10);
     assert_eq!(
-        other_vec
+        result
             .iter()
             .map(|v| v.iter().map(|a| *a).reduce(|a, i| a + i).unwrap())
             .reduce(|acc, i| acc + i)
