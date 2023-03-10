@@ -46,7 +46,7 @@ impl SparVar {
     }
 
     pub fn is_vec(&self) -> bool {
-        self.var_type.0.to_string().starts_with("Vec<")
+        self.var_type.0.to_string().starts_with("Vec")
     }
 }
 
@@ -161,6 +161,7 @@ impl TryFrom<&proc_macro::TokenStream> for SparStream {
             stages.insert(0, stage)
         }
 
+        // any input that was not send by the previous stage becomes 'state'
         for i in 0..stages.len() - 1 {
             if let Some(&mut [ref mut prev, ref mut cur]) = stages.get_mut(i..i + 2) {
                 cur.state = cur
@@ -179,6 +180,7 @@ impl TryFrom<&proc_macro::TokenStream> for SparStream {
             }
         }
 
+        // variables that exist outside the stream, and that we MAY have to restore later
         let mut external_vars: Vec<SparVar> = Vec::new();
         for stage in &stages {
             for input in &stage.state {
@@ -192,9 +194,10 @@ impl TryFrom<&proc_macro::TokenStream> for SparStream {
             }
         }
 
+        // variables that must be restored become the stream's output
         if let Some(stage) = stages.last_mut() {
             for var in &stage.state {
-                if external_vars.contains(var) {
+                if external_vars.contains(var) && var.is_vec() {
                     stage.attrs.output.push(var.clone());
                     attrs.output.push(var.clone());
                 }
