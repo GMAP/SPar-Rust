@@ -11,7 +11,7 @@ fn main() -> Result<(), String> {
         }
     }
 
-    let result: Vec<u32> = Vec::new();
+    let mut result: Vec<u32> = Vec::new();
     to_stream!(INPUT(vec: Vec<u32>, result: Vec<u32>), {
         let mut vec_slice = &mut vec[0..];
         for _ in 0..10 {
