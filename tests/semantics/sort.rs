@@ -12,7 +12,7 @@ fn main() -> Result<(), String> {
     }
 
     let mut result: Vec<u32> = Vec::new();
-    to_stream!(INPUT(vec: Vec<u32>, result: Vec<u32>), {
+    to_stream!(INPUT(vec: Vec<u32>, result: Vec<u32>), ORDERED, {
         let mut vec_slice = &mut vec[0..];
         for _ in 0..10 {
             let split = vec_slice.split_at_mut(10000);
