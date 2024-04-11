@@ -3,6 +3,7 @@ name = "spar-rust"
 version = "0.1.0"
 edition = "2021"
 authors = ["Leonardo Gibrowski Faé <leonardo.fae@edu.pucrs.br>"]
+license = "MIT"
 
 [lib]
 proc-macro = true
