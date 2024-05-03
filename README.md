@@ -1,7 +1,11 @@
 # SPar-Rust (version 1)
 
-This repository contains the code for the first iteration of SPar-Rust.
-Details of its implementation were published in [this ACM paper](https://dl.acm.org/doi/10.1145/3624309.3624320).
+This repository contains the source code for the first version of SPar-Rust. A Domain-Specific Language for expressing stream parallelism (linear pipelines) in Rust programs targeting multi-cores.
+The main goal is to reduce the parallel programming effort. It was inspired by [SPar](https://github.com/GMAP/SPar), which is a C++ annotation-based Domain-Specific Language for expressing stream parallelism.
+
+
+## How to cite
+- [DOI](https://dl.acm.org/doi/10.1145/3624309.3624320) Leonardo G. Faé, Renato B. Hoffman, and Dalvan Griebler. 2023. **Source-to-Source Code Transformation on Rust for High-Level Stream Parallelism**. *In Proceedings of the XXVII Brazilian Symposium on Programming Languages (SBLP '23)*. Association for Computing Machinery, New York, NY, USA, 41–49. 
 
 ### Using SPar-Rust v1
 
